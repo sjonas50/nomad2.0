@@ -14,6 +14,8 @@ const AuthController = () => import('#controllers/auth_controller')
 const StreamTestController = () => import('#controllers/stream_test_controller')
 const ChatController = () => import('#controllers/chat_controller')
 const KnowledgeController = () => import('#controllers/knowledge_controller')
+const ServicesController = () => import('#controllers/services_controller')
+const LibraryController = () => import('#controllers/library_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -27,6 +29,8 @@ router
   .group(() => {
     router.on('/').renderInertia('home', {}).as('home')
     router.get('/knowledge', [KnowledgeController, 'index']).as('knowledge')
+    router.get('/library', [LibraryController, 'index']).as('library')
+    router.get('/services', [ServicesController, 'index']).as('services')
   })
   .use(middleware.auth())
 
@@ -48,5 +52,16 @@ router
     router.get('/knowledge/:id', [KnowledgeController, 'show']).use(middleware.auth())
     router.post('/knowledge/:id/re-embed', [KnowledgeController, 'reEmbed']).use(middleware.auth())
     router.delete('/knowledge/:id', [KnowledgeController, 'destroy']).use(middleware.auth())
+
+    // Library / Downloads API
+    router.post('/library/download', [LibraryController, 'download']).use(middleware.auth())
+    router.get('/library/downloads', [LibraryController, 'downloads']).use(middleware.auth())
+    router.delete('/library/:id', [LibraryController, 'destroy']).use(middleware.auth())
+
+    // Docker services API
+    router.post('/services/:id/start', [ServicesController, 'start']).use(middleware.auth())
+    router.post('/services/:id/stop', [ServicesController, 'stop']).use(middleware.auth())
+    router.post('/services/:id/restart', [ServicesController, 'restart']).use(middleware.auth())
+    router.get('/services/:id/logs', [ServicesController, 'logs']).use(middleware.auth())
   })
   .prefix('/api')

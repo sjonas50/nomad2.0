@@ -30,6 +30,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
               >
                 Knowledge
               </Link>
+              <Link
+                href="/library"
+                className="text-gray-400 transition-colors hover:text-white"
+              >
+                Library
+              </Link>
+              <Link
+                href="/services"
+                className="text-gray-400 transition-colors hover:text-white"
+              >
+                Services
+              </Link>
             </div>
           </div>
           {user && (

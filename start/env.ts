@@ -53,4 +53,8 @@ export default await Env.create(new URL('../', import.meta.url), {
 
   // Python sidecar
   SIDECAR_URL: Env.schema.string.optional(),
+
+  // Storage directories
+  ZIM_STORAGE_DIR: Env.schema.string.optional(),
+  MAP_STORAGE_DIR: Env.schema.string.optional(),
 })
