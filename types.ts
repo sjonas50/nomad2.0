@@ -15,5 +15,6 @@ declare module '@adonisjs/inertia/types' {
     'auth/login': Record<string, never>
     'auth/setup': Record<string, never>
     'home': Record<string, never>
+    'knowledge': Record<string, unknown>
   }
 }

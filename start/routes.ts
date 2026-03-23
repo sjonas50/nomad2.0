@@ -13,6 +13,7 @@ import { middleware } from '#start/kernel'
 const AuthController = () => import('#controllers/auth_controller')
 const StreamTestController = () => import('#controllers/stream_test_controller')
 const ChatController = () => import('#controllers/chat_controller')
+const KnowledgeController = () => import('#controllers/knowledge_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -25,6 +26,7 @@ router.post('/setup', [AuthController, 'setup']).as('auth.setup.store')
 router
   .group(() => {
     router.on('/').renderInertia('home', {}).as('home')
+    router.get('/knowledge', [KnowledgeController, 'index']).as('knowledge')
   })
   .use(middleware.auth())
 
@@ -39,5 +41,12 @@ router
     router.get('/sessions', [ChatController, 'sessions']).use(middleware.auth())
     router.get('/sessions/:id/messages', [ChatController, 'messages']).use(middleware.auth())
     router.delete('/sessions/:id', [ChatController, 'deleteSession']).use(middleware.auth())
+
+    // Knowledge API
+    router.post('/knowledge/upload', [KnowledgeController, 'upload']).use(middleware.auth())
+    router.post('/knowledge/text', [KnowledgeController, 'uploadText']).use(middleware.auth())
+    router.get('/knowledge/:id', [KnowledgeController, 'show']).use(middleware.auth())
+    router.post('/knowledge/:id/re-embed', [KnowledgeController, 'reEmbed']).use(middleware.auth())
+    router.delete('/knowledge/:id', [KnowledgeController, 'destroy']).use(middleware.auth())
   })
   .prefix('/api')

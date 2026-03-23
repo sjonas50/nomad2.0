@@ -73,13 +73,15 @@
     "@tanstack/react-query": "^5.95.2",
     "@vinejs/vine": "^3.0.1",
     "edge.js": "^6.2.1",
+    "falkordb": "^6.6.2",
     "luxon": "^3.7.2",
     "mysql2": "^3.20.0",
     "ollama": "^0.6.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "reflect-metadata": "^0.2.2",
-    "tailwindcss": "^4.2.2"
+    "tailwindcss": "^4.2.2",
+    "unpdf": "^1.4.0"
   },
   "hotHook": {
     "boundaries": [

@@ -2,9 +2,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir fastapi uvicorn
+# System deps for libzim native library
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        pkg-config \
+        libzim-dev \
+    && rm -rf /var/lib/apt/lists/*
 
+# Install Python deps
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
+
+# Copy source code
 COPY main.py .
+COPY extractors/ extractors/
 
 EXPOSE 8100
 

@@ -1,0 +1,11 @@
+[project]
+name = "attic-sidecar"
+version = "0.1.0"
+description = "Python sidecar for the Attic AI knowledge platform"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "httpx>=0.28.0",
+    "libzim>=3.6.0",
+]

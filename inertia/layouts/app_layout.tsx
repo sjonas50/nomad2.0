@@ -24,6 +24,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
               >
                 Chat
               </Link>
+              <Link
+                href="/knowledge"
+                className="text-gray-400 transition-colors hover:text-white"
+              >
+                Knowledge
+              </Link>
             </div>
           </div>
           {user && (
