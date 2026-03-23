@@ -12,6 +12,7 @@ import { middleware } from '#start/kernel'
 
 const AuthController = () => import('#controllers/auth_controller')
 const StreamTestController = () => import('#controllers/stream_test_controller')
+const ChatController = () => import('#controllers/chat_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -32,5 +33,11 @@ router
   .group(() => {
     router.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
     router.get('/stream-test', [StreamTestController, 'stream'])
+
+    // Chat API
+    router.post('/chat', [ChatController, 'stream']).use(middleware.auth())
+    router.get('/sessions', [ChatController, 'sessions']).use(middleware.auth())
+    router.get('/sessions/:id/messages', [ChatController, 'messages']).use(middleware.auth())
+    router.delete('/sessions/:id', [ChatController, 'deleteSession']).use(middleware.auth())
   })
   .prefix('/api')
