@@ -20,6 +20,7 @@ export default class ChatController {
       message: message.trim(),
       sessionId: sessionId ? Number(sessionId) : undefined,
       userId: user.id,
+      userRole: user.role,
     })
 
     response.header('Content-Type', 'application/x-ndjson')

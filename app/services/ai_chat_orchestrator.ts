@@ -1,18 +1,28 @@
 import OllamaService from '#services/ollama_service'
 import EmbeddingService from '#services/embedding_service'
 import VectorStoreService from '#services/vector_store_service'
+import ToolRegistry from '#services/tool_registry'
 import ChatSession from '#models/chat_session'
 import ChatMessage from '#models/chat_message'
 import ModelRole from '#models/model_role'
+import type { UserRole } from '#models/user'
+
+// Built-in tools
+import searchKnowledgeBase from '#tools/search_knowledge_base'
+import installService from '#tools/install_service'
+import downloadContent from '#tools/download_content'
+import systemDiagnostics from '#tools/system_diagnostics'
+import manageModel from '#tools/manage_model'
 
 interface ChatRequest {
   sessionId?: number
   message: string
   userId: number
+  userRole?: UserRole
 }
 
 interface StreamChunk {
-  type: 'token' | 'thinking' | 'sources' | 'done' | 'error' | 'session'
+  type: 'token' | 'thinking' | 'sources' | 'done' | 'error' | 'session' | 'tool_result'
   content: string
   metadata?: Record<string, unknown>
 }
@@ -25,6 +35,7 @@ export default class AIChatOrchestrator {
   private ollama: OllamaService
   private embedding: EmbeddingService
   private vectorStore: VectorStoreService
+  private toolRegistry: ToolRegistry
 
   constructor(
     ollama?: OllamaService,
@@ -34,6 +45,20 @@ export default class AIChatOrchestrator {
     this.ollama = ollama ?? new OllamaService()
     this.embedding = embedding ?? new EmbeddingService(this.ollama)
     this.vectorStore = vectorStore ?? new VectorStoreService()
+    this.toolRegistry = new ToolRegistry()
+    this.registerBuiltinTools()
+  }
+
+  private registerBuiltinTools(): void {
+    this.toolRegistry.register(searchKnowledgeBase)
+    this.toolRegistry.register(installService)
+    this.toolRegistry.register(downloadContent)
+    this.toolRegistry.register(systemDiagnostics)
+    this.toolRegistry.register(manageModel)
+  }
+
+  getToolRegistry(): ToolRegistry {
+    return this.toolRegistry
   }
 
   /**
@@ -68,6 +93,27 @@ export default class AIChatOrchestrator {
           // 3. Classify intent
           const intent = await self.classifyIntent(request.message)
 
+          // 3b. If tool intent, try to extract and execute a tool call
+          if (intent === 'tool') {
+            const toolResult = await self.handleToolIntent(request)
+            if (toolResult) {
+              controller.enqueue(
+                encoder.encode(
+                  JSON.stringify({
+                    type: 'tool_result',
+                    content: toolResult.message,
+                    metadata: {
+                      success: toolResult.success,
+                      data: toolResult.data,
+                      requiresConfirmation: toolResult.requiresConfirmation,
+                      confirmationMessage: toolResult.confirmationMessage,
+                    },
+                  } satisfies StreamChunk) + '\n'
+                )
+              )
+            }
+          }
+
           // 4. Retrieve context if it's a question/search
           let contextBlocks: string[] = []
           let sources: Array<Record<string, unknown>> = []
@@ -97,11 +143,13 @@ export default class AIChatOrchestrator {
           const model = modelConfig.modelName || DEFAULT_MODEL
 
           // 7. Assemble messages
+          const toolDesc = self.toolRegistry.describeForLLM(request.userRole || 'viewer')
           const messages = self.assembleMessages(
             modelConfig.systemPrompt,
             history,
             request.message,
-            contextBlocks
+            contextBlocks,
+            toolDesc
           )
 
           // 8. Stream generation
@@ -199,17 +247,54 @@ export default class AIChatOrchestrator {
         {
           role: 'system',
           content:
-            'Classify the user message into one category: question, search, command, or chat. Respond with ONLY the category word.',
+            'Classify the user message into one category: question, search, tool, or chat.\n' +
+            '- "tool" = the user wants to perform an action (install, download, check status, manage models, run diagnostics)\n' +
+            '- "question" = the user is asking about information in their knowledge base\n' +
+            '- "search" = the user wants to find specific content\n' +
+            '- "chat" = general conversation\n' +
+            'Respond with ONLY the category word.',
         },
         { role: 'user', content: message },
       ])
       const intent = response.trim().toLowerCase()
-      if (['question', 'search', 'command', 'chat'].includes(intent)) {
+      if (['question', 'search', 'tool', 'chat'].includes(intent)) {
         return intent
       }
       return 'chat'
     } catch {
       return 'chat'
+    }
+  }
+
+  private async handleToolIntent(
+    request: ChatRequest
+  ): Promise<{ success: boolean; message: string; data?: Record<string, unknown>; requiresConfirmation?: boolean; confirmationMessage?: string } | null> {
+    const userRole = request.userRole || 'viewer'
+    const availableTools = this.toolRegistry.list(userRole)
+    if (availableTools.length === 0) return null
+
+    // Use LLM to extract tool call from natural language
+    const toolDescriptions = this.toolRegistry.describeForLLM(userRole)
+    try {
+      const response = await this.ollama.chat(CLASSIFIER_MODEL, [
+        {
+          role: 'system',
+          content:
+            `You are a tool router. Given a user message, extract the tool call as JSON.\n\n${toolDescriptions}\n\n` +
+            'Respond with ONLY valid JSON: {"tool": "tool_name", "params": {}}. If no tool matches, respond with {"tool": null}.',
+        },
+        { role: 'user', content: request.message },
+      ])
+
+      const parsed = JSON.parse(response.trim())
+      if (!parsed.tool) return null
+
+      return this.toolRegistry.execute(parsed.tool, parsed.params || {}, {
+        userId: request.userId,
+        userRole,
+      })
+    } catch {
+      return null
     }
   }
 
@@ -283,12 +368,16 @@ export default class AIChatOrchestrator {
     systemPrompt: string | null,
     history: Array<{ role: string; content: string }>,
     userMessage: string,
-    contextBlocks: string[]
+    contextBlocks: string[],
+    toolDescriptions?: string
   ): Array<{ role: string; content: string }> {
     const messages: Array<{ role: string; content: string }> = []
 
     // System prompt
     let system = systemPrompt || 'You are The Attic AI, a helpful knowledge assistant.'
+    if (toolDescriptions) {
+      system += '\n\n' + toolDescriptions
+    }
     if (contextBlocks.length > 0) {
       system +=
         '\n\nUse the following retrieved context to answer. Cite sources by [number].\n\n' +
