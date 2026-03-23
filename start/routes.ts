@@ -16,6 +16,8 @@ const ChatController = () => import('#controllers/chat_controller')
 const KnowledgeController = () => import('#controllers/knowledge_controller')
 const ServicesController = () => import('#controllers/services_controller')
 const LibraryController = () => import('#controllers/library_controller')
+const MeshController = () => import('#controllers/mesh_controller')
+const WifiController = () => import('#controllers/wifi_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -31,6 +33,8 @@ router
     router.get('/knowledge', [KnowledgeController, 'index']).as('knowledge')
     router.get('/library', [LibraryController, 'index']).as('library')
     router.get('/services', [ServicesController, 'index']).as('services')
+    router.get('/mesh', [MeshController, 'index']).as('mesh')
+    router.get('/wifi', [WifiController, 'index']).as('wifi')
   })
   .use(middleware.auth())
 
@@ -63,5 +67,16 @@ router
     router.post('/services/:id/stop', [ServicesController, 'stop']).use(middleware.auth())
     router.post('/services/:id/restart', [ServicesController, 'restart']).use(middleware.auth())
     router.get('/services/:id/logs', [ServicesController, 'logs']).use(middleware.auth())
+
+    // Mesh API
+    router.get('/mesh/messages', [MeshController, 'messages']).use(middleware.auth())
+    router.get('/mesh/nodes', [MeshController, 'nodes']).use(middleware.auth())
+    router.get('/mesh/summary', [MeshController, 'summary']).use(middleware.auth())
+    router.post('/mesh/embed', [MeshController, 'embed']).use(middleware.auth())
+
+    // WiFi AP API
+    router.get('/wifi/status', [WifiController, 'status']).use(middleware.auth())
+    router.post('/wifi/start', [WifiController, 'start']).use(middleware.auth())
+    router.post('/wifi/stop', [WifiController, 'stop']).use(middleware.auth())
   })
   .prefix('/api')

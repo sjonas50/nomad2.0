@@ -42,6 +42,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
               >
                 Services
               </Link>
+              <Link
+                href="/mesh"
+                className="text-gray-400 transition-colors hover:text-white"
+              >
+                Mesh
+              </Link>
+              <Link
+                href="/wifi"
+                className="text-gray-400 transition-colors hover:text-white"
+              >
+                WiFi
+              </Link>
             </div>
           </div>
           {user && (

@@ -57,4 +57,11 @@ export default await Env.create(new URL('../', import.meta.url), {
   // Storage directories
   ZIM_STORAGE_DIR: Env.schema.string.optional(),
   MAP_STORAGE_DIR: Env.schema.string.optional(),
+
+  // Mesh / Meshtastic
+  MESH_ENABLED: Env.schema.boolean.optional(),
+  MQTT_BROKER: Env.schema.string.optional(),
+  MQTT_TOPIC: Env.schema.string.optional(),
+  MQTT_USERNAME: Env.schema.string.optional(),
+  MQTT_PASSWORD: Env.schema.string.optional(),
 })
