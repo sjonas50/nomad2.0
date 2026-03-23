@@ -1,0 +1,10 @@
+node_modules
+build
+.git
+.env
+*.md
+docs
+tests
+.vscode
+.idea
+tmp
