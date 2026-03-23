@@ -54,6 +54,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
               >
                 WiFi
               </Link>
+              {user?.role === 'admin' && (
+                <Link
+                  href="/admin"
+                  className="text-gray-400 transition-colors hover:text-white"
+                >
+                  Admin
+                </Link>
+              )}
             </div>
           </div>
           {user && (

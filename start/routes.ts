@@ -18,6 +18,8 @@ const ServicesController = () => import('#controllers/services_controller')
 const LibraryController = () => import('#controllers/library_controller')
 const MeshController = () => import('#controllers/mesh_controller')
 const WifiController = () => import('#controllers/wifi_controller')
+const AdminController = () => import('#controllers/admin_controller')
+const FeedbackController = () => import('#controllers/feedback_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -35,6 +37,7 @@ router
     router.get('/services', [ServicesController, 'index']).as('services')
     router.get('/mesh', [MeshController, 'index']).as('mesh')
     router.get('/wifi', [WifiController, 'index']).as('wifi')
+    router.get('/admin', [AdminController, 'index']).as('admin')
   })
   .use(middleware.auth())
 
@@ -78,5 +81,22 @@ router
     router.get('/wifi/status', [WifiController, 'status']).use(middleware.auth())
     router.post('/wifi/start', [WifiController, 'start']).use(middleware.auth())
     router.post('/wifi/stop', [WifiController, 'stop']).use(middleware.auth())
+
+    // Feedback API
+    router.post('/feedback', [FeedbackController, 'create']).use(middleware.auth())
+
+    // Admin API (auth required, admin role checked in controller)
+    router.get('/admin/users', [AdminController, 'listUsers']).use(middleware.auth())
+    router.patch('/admin/users/:id', [AdminController, 'updateUser']).use(middleware.auth())
+    router.delete('/admin/users/:id', [AdminController, 'deleteUser']).use(middleware.auth())
+    router.get('/admin/audit-logs', [AdminController, 'auditLogs']).use(middleware.auth())
+    router.get('/admin/templates', [AdminController, 'listTemplates']).use(middleware.auth())
+    router.put('/admin/templates/:slug', [AdminController, 'updateTemplate']).use(middleware.auth())
+    router.get('/admin/backups', [AdminController, 'listBackups']).use(middleware.auth())
+    router.post('/admin/backup', [AdminController, 'createBackup']).use(middleware.auth())
+    router.post('/admin/restore', [AdminController, 'restoreBackup']).use(middleware.auth())
+    router.delete('/admin/backups/:filename', [AdminController, 'deleteBackup']).use(middleware.auth())
+    router.get('/admin/health', [AdminController, 'health']).use(middleware.auth())
+    router.get('/admin/feedback/stats', [FeedbackController, 'stats']).use(middleware.auth())
   })
   .prefix('/api')
