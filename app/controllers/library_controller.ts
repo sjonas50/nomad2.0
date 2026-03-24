@@ -4,6 +4,7 @@ import InstalledResource from '#models/installed_resource'
 import DownloadService from '#services/download_service'
 import { randomUUID } from 'node:crypto'
 import env from '#start/env'
+import SecurityMiddleware from '#middleware/security_middleware'
 
 export default class LibraryController {
   /**
@@ -46,6 +47,10 @@ export default class LibraryController {
 
     if (!url || !name) {
       return response.badRequest({ error: 'URL and name are required' })
+    }
+
+    if (!SecurityMiddleware.isUrlSafe(url)) {
+      return response.badRequest({ error: 'URL targets a blocked network range' })
     }
 
     const destDir =

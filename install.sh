@@ -25,7 +25,7 @@ run() {
   if $DRY_RUN; then
     echo "  [dry-run] $*"
   else
-    eval "$@"
+    "$@"
   fi
 }
 
@@ -86,7 +86,7 @@ echo ""
 echo "📋 Setting up environment..."
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
   if [ -f "$SCRIPT_DIR/.env.example" ]; then
-    run "cp '$SCRIPT_DIR/.env.example' '$SCRIPT_DIR/.env'"
+    run cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
     # Generate APP_KEY
     APP_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))")
     if ! $DRY_RUN; then
@@ -104,17 +104,17 @@ echo ""
 
 # 4. Install dependencies
 echo "📦 Installing Node.js dependencies..."
-run "cd '$SCRIPT_DIR' && npm install --legacy-peer-deps"
+run npm install --legacy-peer-deps --prefix "$SCRIPT_DIR"
 ok "Dependencies installed"
 echo ""
 
 # 5. Start Docker services
 echo "🐳 Starting Docker services..."
 if [ -n "$PROFILE" ]; then
-  run "cd '$SCRIPT_DIR' && docker compose --profile $PROFILE up -d"
+  run docker compose --project-directory "$SCRIPT_DIR" --profile "$PROFILE" up -d
   ok "Docker services started with profile: $PROFILE"
 else
-  run "cd '$SCRIPT_DIR' && docker compose up -d"
+  run docker compose --project-directory "$SCRIPT_DIR" up -d
   ok "Docker services started (core profile)"
 fi
 echo ""
@@ -150,9 +150,9 @@ echo ""
 
 # 7. Pull AI models
 echo "🤖 Pulling required AI models..."
-run "docker exec attic_ollama ollama pull nomic-embed-text"
+run docker exec attic_ollama ollama pull nomic-embed-text
 ok "nomic-embed-text (embedding model)"
-run "docker exec attic_ollama ollama pull qwen2.5:1.5b"
+run docker exec attic_ollama ollama pull qwen2.5:1.5b
 ok "qwen2.5:1.5b (classifier model)"
 
 # Recommend a larger model if RAM allows
@@ -167,13 +167,13 @@ echo ""
 
 # 8. Run database migrations
 echo "🗄️  Running database migrations..."
-run "cd '$SCRIPT_DIR' && node ace migration:run --force"
+run node ace migration:run --force --cwd "$SCRIPT_DIR"
 ok "Migrations complete"
 echo ""
 
 # 9. Build frontend
 echo "🏗️  Building frontend assets..."
-run "cd '$SCRIPT_DIR' && node ace build"
+run node ace build --cwd "$SCRIPT_DIR"
 ok "Build complete"
 echo ""
 

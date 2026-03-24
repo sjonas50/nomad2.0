@@ -36,10 +36,18 @@ async def health() -> dict[str, str]:
 @app.post("/extract/zim")
 async def extract_zim(req: ZimRequest) -> list[dict]:
     """Extract articles from a ZIM file."""
+    import os
+
+    # Path traversal protection: restrict to allowed directory
+    allowed_dir = os.environ.get("ZIM_STORAGE_DIR", "/data/zim")
+    resolved = os.path.realpath(req.file_path)
+    if not resolved.startswith(os.path.realpath(allowed_dir) + os.sep):
+        raise HTTPException(status_code=400, detail="file_path must be within the ZIM storage directory")
+
     from extractors.zim import extract_articles
 
     try:
-        articles = extract_articles(req.file_path, limit=req.limit)
+        articles = extract_articles(resolved, limit=req.limit)
     except RuntimeError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     except FileNotFoundError as exc:

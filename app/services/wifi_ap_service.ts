@@ -1,9 +1,17 @@
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { writeFile } from 'node:fs/promises'
 import logger from '@adonisjs/core/services/logger'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+
+/** Validate network interface name — alphanumeric and dots only (e.g. wlan0, eth0.1) */
+function validateInterface(name: string): string {
+  if (!/^[a-zA-Z][a-zA-Z0-9._-]{0,14}$/.test(name)) {
+    throw new Error(`Invalid network interface name: ${name}`)
+  }
+  return name
+}
 
 export interface WifiApConfig {
   ssid: string
@@ -48,13 +56,13 @@ export default class WifiApService {
    */
   async getStatus(): Promise<WifiApStatus> {
     try {
-      const { stdout } = await execAsync('hostapd_cli status 2>/dev/null || echo "inactive"')
+      const { stdout } = await execFileAsync('hostapd_cli', ['status']).catch(() => ({ stdout: 'inactive' }))
       const active = stdout.includes('state=ENABLED')
 
       let connectedClients = 0
       if (active) {
         try {
-          const { stdout: stationsOut } = await execAsync('hostapd_cli all_sta 2>/dev/null')
+          const { stdout: stationsOut } = await execFileAsync('hostapd_cli', ['all_sta'])
           connectedClients = (stationsOut.match(/dot11RSNAStatsSTAAddress/g) || []).length
         } catch {
           // ignore
@@ -128,17 +136,18 @@ export default class WifiApService {
       await writeFile(confPath, hostapdConf)
 
       // Configure interface
-      await execAsync(`sudo ip addr add 192.168.4.1/24 dev ${this.config.interface} 2>/dev/null || true`)
-      await execAsync(`sudo ip link set ${this.config.interface} up`)
+      const iface = validateInterface(this.config.interface)
+      await execFileAsync('sudo', ['ip', 'addr', 'add', '192.168.4.1/24', 'dev', iface]).catch(() => {})
+      await execFileAsync('sudo', ['ip', 'link', 'set', iface, 'up'])
 
       // Start hostapd
-      await execAsync(`sudo hostapd -B ${confPath}`)
+      await execFileAsync('sudo', ['hostapd', '-B', confPath])
 
       // Start dnsmasq
       const dnsmasqConf = this.generateDnsmasqConfig()
       const dnsmasqPath = '/tmp/attic-dnsmasq.conf'
       await writeFile(dnsmasqPath, dnsmasqConf)
-      await execAsync(`sudo dnsmasq -C ${dnsmasqPath} --pid-file=/tmp/attic-dnsmasq.pid`)
+      await execFileAsync('sudo', ['dnsmasq', '-C', dnsmasqPath, '--pid-file=/tmp/attic-dnsmasq.pid'])
 
       logger.info({ ssid: this.config.ssid }, 'WiFi AP started')
       return true
@@ -153,9 +162,12 @@ export default class WifiApService {
    */
   async stop(): Promise<boolean> {
     try {
-      await execAsync('sudo killall hostapd 2>/dev/null || true')
-      await execAsync('sudo kill $(cat /tmp/attic-dnsmasq.pid) 2>/dev/null || true')
-      await execAsync(`sudo ip addr del 192.168.4.1/24 dev ${this.config.interface} 2>/dev/null || true`)
+      const iface = validateInterface(this.config.interface)
+      await execFileAsync('sudo', ['killall', 'hostapd']).catch(() => {})
+      const { readFile } = await import('node:fs/promises')
+      const pid = (await readFile('/tmp/attic-dnsmasq.pid', 'utf-8').catch(() => '')).trim()
+      if (pid) await execFileAsync('sudo', ['kill', pid]).catch(() => {})
+      await execFileAsync('sudo', ['ip', 'addr', 'del', '192.168.4.1/24', 'dev', iface]).catch(() => {})
       logger.info('WiFi AP stopped')
       return true
     } catch (error) {
@@ -178,8 +190,8 @@ export default class WifiApService {
    */
   async isAvailable(): Promise<boolean> {
     try {
-      await execAsync('which hostapd')
-      await execAsync('which dnsmasq')
+      await execFileAsync('which', ['hostapd'])
+      await execFileAsync('which', ['dnsmasq'])
       return true
     } catch {
       return false

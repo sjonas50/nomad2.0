@@ -1,5 +1,6 @@
 import type { ToolHandler, ToolExecutionContext, ToolResult } from '#services/tool_registry'
 import DownloadService from '#services/download_service'
+import SecurityMiddleware from '#middleware/security_middleware'
 import { randomUUID } from 'node:crypto'
 
 const downloadContent: ToolHandler = {
@@ -18,6 +19,13 @@ const downloadContent: ToolHandler = {
     const url = params.url as string
     const name = params.name as string
     const id = randomUUID()
+
+    if (!SecurityMiddleware.isUrlSafe(url)) {
+      return {
+        success: false,
+        message: 'URL targets a blocked network range (SSRF protection)',
+      }
+    }
 
     try {
       const downloadService = new DownloadService()

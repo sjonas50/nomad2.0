@@ -6,6 +6,9 @@ import type { NextFn } from '@adonisjs/core/types/http'
  * Limits chat API to prevent abuse on shared devices.
  */
 const rateLimitBuckets = new Map<string, { tokens: number; lastRefill: number }>()
+const CLEANUP_INTERVAL_MS = 5 * 60_000 // 5 minutes
+const STALE_THRESHOLD_MS = 10 * 60_000 // 10 minutes
+let lastCleanup = Date.now()
 
 const RATE_LIMITS: Record<string, { maxTokens: number; refillRate: number; windowMs: number }> = {
   '/api/chat': { maxTokens: 10, refillRate: 1, windowMs: 60_000 }, // 10 req/min, refill 1/min
@@ -53,7 +56,18 @@ export default class SecurityMiddleware {
     response.header('Referrer-Policy', 'strict-origin-when-cross-origin')
     response.header('X-XSS-Protection', '0') // Modern CSP replaces this
 
-    // 2. Rate limiting on specific endpoints
+    // 2. Periodic cleanup of stale rate limit buckets
+    const now = Date.now()
+    if (now - lastCleanup > CLEANUP_INTERVAL_MS) {
+      lastCleanup = now
+      for (const [key, bucket] of rateLimitBuckets) {
+        if (now - bucket.lastRefill > STALE_THRESHOLD_MS) {
+          rateLimitBuckets.delete(key)
+        }
+      }
+    }
+
+    // 3. Rate limiting on specific endpoints
     const rateLimitConfig = RATE_LIMITS[request.url()]
     if (rateLimitConfig) {
       const key = `${ctx.auth?.user?.id || request.ip()}_${request.url()}`
@@ -83,13 +97,23 @@ export default class SecurityMiddleware {
       response.header('X-RateLimit-Remaining', String(bucket.tokens))
     }
 
-    // 3. File upload restrictions
+    // 4. File upload restrictions
     if (request.url().includes('/upload')) {
       const contentLength = Number(request.header('content-length') || 0)
       if (contentLength > MAX_UPLOAD_SIZE) {
         return response.requestEntityTooLarge({
           error: `File too large. Maximum size is ${MAX_UPLOAD_SIZE / 1024 / 1024} MB.`,
         })
+      }
+
+      const contentType = request.header('content-type') || ''
+      if (contentType && !contentType.includes('multipart/form-data')) {
+        const mimeType = contentType.split(';')[0].trim()
+        if (mimeType && !SecurityMiddleware.isAllowedUploadType(mimeType)) {
+          return response.unsupportedMediaType({
+            error: `Unsupported file type: ${mimeType}`,
+          })
+        }
       }
     }
 

@@ -7,10 +7,23 @@ import HealthService from '#services/health_service'
 
 export default class AdminController {
   /**
+   * Guard that ensures the current user has the admin role.
+   */
+  private assertAdmin(ctx: HttpContext): void {
+    const user = ctx.auth.getUserOrFail()
+    if (!user.isAdmin) {
+      ctx.response.forbidden({ error: 'Admin access required' })
+      throw new Error('Forbidden')
+    }
+  }
+
+  /**
    * Admin dashboard page.
    * GET /admin
    */
-  async index({ inertia }: HttpContext) {
+  async index(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { inertia } = ctx
     const healthService = new HealthService()
     const health = await healthService.check()
     const users = await User.query().orderBy('createdAt', 'desc')
@@ -43,7 +56,8 @@ export default class AdminController {
    * List users.
    * GET /api/admin/users
    */
-  async listUsers(_ctx: HttpContext) {
+  async listUsers(ctx: HttpContext) {
+    this.assertAdmin(ctx)
     const users = await User.query().orderBy('createdAt', 'desc')
     return users.map((u) => ({
       id: u.id,
@@ -58,7 +72,9 @@ export default class AdminController {
    * Update a user's role.
    * PATCH /api/admin/users/:id
    */
-  async updateUser({ params, request, response }: HttpContext) {
+  async updateUser(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { params, request, response } = ctx
     const user = await User.findOrFail(params.id)
     const { role } = request.only(['role'])
 
@@ -75,7 +91,9 @@ export default class AdminController {
    * Delete a user.
    * DELETE /api/admin/users/:id
    */
-  async deleteUser({ params, auth, response }: HttpContext) {
+  async deleteUser(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { params, auth, response } = ctx
     const currentUser = auth.getUserOrFail()
     if (currentUser.id === Number(params.id)) {
       return response.badRequest({ error: 'Cannot delete your own account' })
@@ -92,7 +110,9 @@ export default class AdminController {
    * List audit logs with pagination.
    * GET /api/admin/audit-logs
    */
-  async auditLogs({ request }: HttpContext) {
+  async auditLogs(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { request } = ctx
     const page = Number(request.qs().page) || 1
     const limit = Math.min(Number(request.qs().limit) || 50, 100)
     const action = request.qs().action as string | undefined
@@ -110,7 +130,8 @@ export default class AdminController {
    * List prompt templates.
    * GET /api/admin/templates
    */
-  async listTemplates(_ctx: HttpContext) {
+  async listTemplates(ctx: HttpContext) {
+    this.assertAdmin(ctx)
     const templates = await PromptTemplate.query()
       .where('isActive', true)
       .orderBy('slug', 'asc')
@@ -128,7 +149,9 @@ export default class AdminController {
    * Update a prompt template.
    * PUT /api/admin/templates/:slug
    */
-  async updateTemplate({ params, request }: HttpContext) {
+  async updateTemplate(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { params, request } = ctx
     const { name, template, variables } = request.only(['name', 'template', 'variables'])
     const slug = params.slug as string
 
@@ -165,7 +188,8 @@ export default class AdminController {
    * List backups.
    * GET /api/admin/backups
    */
-  async listBackups(_ctx: HttpContext) {
+  async listBackups(ctx: HttpContext) {
+    this.assertAdmin(ctx)
     const backupService = new BackupService()
     return backupService.listBackups()
   }
@@ -174,7 +198,9 @@ export default class AdminController {
    * Create a backup.
    * POST /api/admin/backup
    */
-  async createBackup({ request, response }: HttpContext) {
+  async createBackup(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { request, response } = ctx
     const type = (request.input('type') as string) || 'mysql'
     const backupService = new BackupService()
 
@@ -197,7 +223,9 @@ export default class AdminController {
    * Restore a backup.
    * POST /api/admin/restore
    */
-  async restoreBackup({ request, response }: HttpContext) {
+  async restoreBackup(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { request, response } = ctx
     const filename = request.input('filename') as string
     if (!filename) {
       return response.badRequest({ error: 'Filename is required' })
@@ -218,7 +246,9 @@ export default class AdminController {
    * Delete a backup.
    * DELETE /api/admin/backups/:filename
    */
-  async deleteBackup({ params, response }: HttpContext) {
+  async deleteBackup(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { params, response } = ctx
     const backupService = new BackupService()
     try {
       await backupService.deleteBackup(params.filename)
@@ -236,7 +266,8 @@ export default class AdminController {
    * System health check.
    * GET /api/admin/health
    */
-  async health(_ctx: HttpContext) {
+  async health(ctx: HttpContext) {
+    this.assertAdmin(ctx)
     const healthService = new HealthService()
     return healthService.check()
   }

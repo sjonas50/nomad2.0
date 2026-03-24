@@ -107,8 +107,12 @@ export default class KnowledgeController {
    * Get source status.
    * GET /api/knowledge/:id
    */
-  async show({ params }: HttpContext) {
-    const source = await KnowledgeSource.findOrFail(params.id)
+  async show({ params, auth }: HttpContext) {
+    const user = auth.getUserOrFail()
+    const source = await KnowledgeSource.query()
+      .where('id', params.id)
+      .where('userId', user.id)
+      .firstOrFail()
     return {
       id: source.id,
       name: source.name,
@@ -127,8 +131,12 @@ export default class KnowledgeController {
    * Re-embed a source.
    * POST /api/knowledge/:id/re-embed
    */
-  async reEmbed({ params, response }: HttpContext) {
-    const source = await KnowledgeSource.findOrFail(params.id)
+  async reEmbed({ params, response, auth }: HttpContext) {
+    const user = auth.getUserOrFail()
+    const source = await KnowledgeSource.query()
+      .where('id', params.id)
+      .where('userId', user.id)
+      .firstOrFail()
     const ingestion = new IngestionService()
     ingestion.reEmbed(source.id).catch(() => {})
     return response.ok({ status: 'started' })
@@ -138,7 +146,13 @@ export default class KnowledgeController {
    * Delete a source and its vectors.
    * DELETE /api/knowledge/:id
    */
-  async destroy({ params, response }: HttpContext) {
+  async destroy({ params, response, auth }: HttpContext) {
+    const user = auth.getUserOrFail()
+    // Verify the source belongs to the current user
+    await KnowledgeSource.query()
+      .where('id', params.id)
+      .where('userId', user.id)
+      .firstOrFail()
     const ingestion = new IngestionService()
     await ingestion.deleteSource(params.id)
     return response.noContent()

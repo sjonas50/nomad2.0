@@ -95,7 +95,8 @@ export default class GraphService {
     if (!this.enabled || !this.graph) return
 
     const props = properties ?? {}
-    const propEntries = Object.entries(props)
+    // Sanitize property keys to prevent Cypher injection
+    const propEntries = Object.entries(props).filter(([key]) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key))
     const setClauses = propEntries.map(([key]) => `n.${key} = $${key}`).join(', ')
     const setStatement = setClauses ? `, ${setClauses}` : ''
 
@@ -125,6 +126,12 @@ export default class GraphService {
     properties?: Record<string, unknown>
   ): Promise<void> {
     if (!this.enabled || !this.graph) return
+
+    // Sanitize relType to prevent Cypher injection — only allow uppercase letters and underscores
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(relType)) {
+      relType = relType.toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+      if (!relType || !/^[A-Z_]/.test(relType)) relType = 'RELATED_TO'
+    }
 
     const props = properties ?? {}
     const propString = Object.keys(props).length

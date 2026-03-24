@@ -1,10 +1,10 @@
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdir, readdir, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import logger from '@adonisjs/core/services/logger'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 export interface BackupInfo {
   filename: string
@@ -33,10 +33,22 @@ export default class BackupService {
     const password = process.env.DB_PASSWORD || ''
     const database = process.env.DB_DATABASE || 'attic'
 
-    const cmd = `mysqldump -h ${host} -P ${port} -u ${user} ${password ? `-p${password}` : ''} ${database} | gzip > ${filePath}`
+    const args = ['-h', host, '-P', port, '-u', user]
+    if (password) args.push(`-p${password}`)
+    args.push(database)
 
     try {
-      await execAsync(cmd)
+      const { stdout } = await execFileAsync('mysqldump', args)
+      const { createWriteStream } = await import('node:fs')
+      const { pipeline } = await import('node:stream/promises')
+      const { createGzip } = await import('node:zlib')
+      const { Readable } = await import('node:stream')
+
+      await pipeline(
+        Readable.from(Buffer.from(stdout)),
+        createGzip(),
+        createWriteStream(filePath)
+      )
       const stats = await stat(filePath)
       logger.info({ filename, size: stats.size }, 'MySQL backup created')
 
@@ -165,10 +177,18 @@ export default class BackupService {
     const password = process.env.DB_PASSWORD || ''
     const database = process.env.DB_DATABASE || 'attic'
 
-    const cmd = `gunzip -c ${filePath} | mysql -h ${host} -P ${port} -u ${user} ${password ? `-p${password}` : ''} ${database}`
-
     try {
-      await execAsync(cmd)
+      // Decompress the backup file
+      const { readFile: readBackupFile } = await import('node:fs/promises')
+      const { gunzipSync } = await import('node:zlib')
+      const compressed = await readBackupFile(filePath)
+      const sql = gunzipSync(compressed).toString('utf-8')
+
+      const mysqlArgs = ['-h', host, '-P', port, '-u', user]
+      if (password) mysqlArgs.push(`-p${password}`)
+      mysqlArgs.push(database)
+
+      await execFileAsync('mysql', mysqlArgs, { input: sql } as any)
       logger.info({ filename }, 'MySQL restore completed')
     } catch (error) {
       logger.error({ error }, 'MySQL restore failed')
