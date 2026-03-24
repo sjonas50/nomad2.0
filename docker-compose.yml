@@ -160,7 +160,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:3333/api/health']
+      test: ['CMD', 'curl', '-f', 'http://localhost:3333/health']
       interval: 15s
       timeout: 5s
       retries: 5

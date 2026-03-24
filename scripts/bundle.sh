@@ -69,6 +69,8 @@ IMAGES=(
   "redis:7-alpine"
   "ollama/ollama:latest"
   "qdrant/qdrant:v1.12.1"
+  "falkordb/falkordb-server:latest"
+  "ghcr.io/brian7704/opentakserver:latest"
 )
 
 for img in "${IMAGES[@]}"; do

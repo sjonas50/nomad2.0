@@ -43,9 +43,10 @@ docker rmi redis:7-alpine 2>/dev/null || true
 docker rmi ollama/ollama:latest 2>/dev/null || true
 docker rmi qdrant/qdrant:v1.12.1 2>/dev/null || true
 docker rmi falkordb/falkordb-server:latest 2>/dev/null || true
+docker rmi ghcr.io/brian7704/opentakserver:latest 2>/dev/null || true
 
 echo -e "${YELLOW}[▸]${NC}  Removing orphan volumes..."
-for vol in attic_mysql_data attic_redis_data attic_ollama_data attic_qdrant_data attic_falkordb_data attic_app_storage; do
+for vol in attic_mysql_data attic_redis_data attic_ollama_data attic_qdrant_data attic_falkordb_data attic_app_storage attic_tak_data; do
   docker volume rm "$vol" 2>/dev/null || true
 done
 

@@ -98,6 +98,7 @@ services:
       QUEUE_REDIS_PORT: 6379
       OLLAMA_HOST: http://ollama:11434
       QDRANT_HOST: http://qdrant:6333
+      SIDECAR_URL: http://sidecar:8100
       SESSION_DRIVER: cookie
     volumes:
       - app_storage:/app/storage
@@ -152,6 +153,9 @@ services:
       OLLAMA_HOST: http://ollama:11434
       FALKORDB_HOST: falkordb
       FALKORDB_PORT: 6379
+      ZIM_STORAGE_DIR: /data/zim
+    volumes:
+      - app_storage:/data
     depends_on:
       ollama:
         condition: service_healthy
@@ -161,6 +165,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # Optional: starts with --profile full or --profile tak
+  opentakserver:
+    image: ghcr.io/brian7704/opentakserver:latest
+    container_name: attic_tak
+    restart: unless-stopped
+    profiles: ['full', 'tak']
+    ports:
+      - '8089:8089'
+      - '8443:8443'
+      - '8080:8080'
+    volumes:
+      - tak_data:/opt/ots
+    environment:
+      OTS_ENABLE_TCP: 'true'
+      OTS_TCP_PORT: '8089'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
 volumes:
   mysql_data:
   redis_data:
@@ -168,3 +194,4 @@ volumes:
   qdrant_data:
   falkordb_data:
   app_storage:
+  tak_data:
