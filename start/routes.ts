@@ -22,6 +22,7 @@ const AdminController = () => import('#controllers/admin_controller')
 const FeedbackController = () => import('#controllers/feedback_controller')
 const IncidentController = () => import('#controllers/incident_controller')
 const VoiceController = () => import('#controllers/voice_controller')
+const SyncController = () => import('#controllers/sync_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -103,6 +104,15 @@ router
     router.post('/voice/capture', [VoiceController, 'capture']).use(middleware.auth())
     router.post('/voice/transcribe', [VoiceController, 'transcribe']).use(middleware.auth())
     router.post('/voice/extract', [VoiceController, 'extract']).use(middleware.auth())
+
+    // Sync & Sneakernet API
+    router.get('/sync/status', [SyncController, 'status']).use(middleware.auth())
+    router.get('/sync/peers', [SyncController, 'peers']).use(middleware.auth())
+    router.post('/sync/export', [SyncController, 'exportBundle']).use(middleware.auth())
+    router.post('/sync/import', [SyncController, 'importBundle']).use(middleware.auth())
+    router.get('/sync/bundles', [SyncController, 'listBundles']).use(middleware.auth())
+    router.delete('/sync/bundles/:filename', [SyncController, 'deleteBundle']).use(middleware.auth())
+    router.get('/sync/download/:filename', [SyncController, 'downloadBundle']).use(middleware.auth())
 
     // Admin API (auth required, admin role checked in controller)
     router.get('/admin/users', [AdminController, 'listUsers']).use(middleware.auth())
