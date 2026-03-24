@@ -37,6 +37,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 Library
               </Link>
               <Link
+                href="/incidents"
+                className="text-gray-400 transition-colors hover:text-white"
+              >
+                Incidents
+              </Link>
+              <Link
                 href="/services"
                 className="text-gray-400 transition-colors hover:text-white"
               >

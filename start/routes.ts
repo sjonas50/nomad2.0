@@ -20,6 +20,7 @@ const MeshController = () => import('#controllers/mesh_controller')
 const WifiController = () => import('#controllers/wifi_controller')
 const AdminController = () => import('#controllers/admin_controller')
 const FeedbackController = () => import('#controllers/feedback_controller')
+const IncidentController = () => import('#controllers/incident_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -38,6 +39,8 @@ router
     router.get('/mesh', [MeshController, 'index']).as('mesh')
     router.get('/wifi', [WifiController, 'index']).as('wifi')
     router.get('/admin', [AdminController, 'index']).as('admin')
+    router.get('/incidents', [IncidentController, 'index']).as('incidents')
+    router.get('/incidents/:id', [IncidentController, 'show']).as('incidents.show')
   })
   .use(middleware.auth())
 
@@ -84,6 +87,16 @@ router
 
     // Feedback API
     router.post('/feedback', [FeedbackController, 'create']).use(middleware.auth())
+
+    // Incident API
+    router.post('/incidents', [IncidentController, 'create']).use(middleware.auth())
+    router.patch('/incidents/:id/status', [IncidentController, 'updateStatus']).use(middleware.auth())
+    router.post('/incidents/:id/activity', [IncidentController, 'logActivity']).use(middleware.auth())
+    router.post('/incidents/:id/check-in', [IncidentController, 'checkIn']).use(middleware.auth())
+    router.get('/incidents/:id/summary', [IncidentController, 'summary']).use(middleware.auth())
+    router.get('/incidents/:id/aar', [IncidentController, 'aar']).use(middleware.auth())
+    router.post('/incidents/:id/functions', [IncidentController, 'createFunction']).use(middleware.auth())
+    router.patch('/incidents/functions/:id', [IncidentController, 'updateFunction']).use(middleware.auth())
 
     // Admin API (auth required, admin role checked in controller)
     router.get('/admin/users', [AdminController, 'listUsers']).use(middleware.auth())

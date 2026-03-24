@@ -54,6 +54,7 @@ node ace benchmark                        # Run performance benchmarks
 ## Architecture
 
 Detailed diagrams: `docs/architecture.md`. Build plan: `docs/build-plan.md`. Research: `docs/research.md`.
+COOP extension: `docs/architecture-coop.md`. COOP build plan: `docs/build-plan-coop.md`. COOP research: `docs/research-coop-features.md`.
 
 ### Service Layer (7 decomposed RAG services + orchestrator)
 
@@ -97,6 +98,18 @@ Detailed diagrams: `docs/architecture.md`. Build plan: `docs/build-plan.md`. Res
 - `knowledge_sources` — lifecycle tracking: pending→extracting→chunking→embedding→indexed→failed
 - `prompt_templates` — versioned system prompts in DB (not hardcoded)
 - `tool_definitions` — AI-invokable capabilities with RBAC requirements
+- `mesh_nodes` / `mesh_messages` — Meshtastic mesh network state
+- `audit_logs` — pattern-matched route logging for security auditing
+- `retrieval_feedback` — per-message thumbs up/down for RAG quality tracking
+
+### COOP Models (Phase 8+)
+
+- `incidents` — ICS incident container with type, status, operational period
+- `essential_functions` — FEMA priority-tiered functions with personnel assignments
+- `resources` — equipment/supplies with geo-location and assignment tracking
+- `activity_logs` — append-only ICS-214 style log (corrections via `corrects_id` self-ref, never UPDATE)
+- `personnel_statuses` — per-incident check-in with location and status
+- `geofences` — GeoJSON polygon zones for enter/exit alerts
 
 ## Qdrant Collection: `attic_knowledge_base`
 
@@ -114,4 +127,16 @@ Detailed diagrams: `docs/architecture.md`. Build plan: `docs/build-plan.md`. Res
 | ollama | 11434 | default | Mandatory for AI |
 | qdrant | 6333 | default | Mandatory for RAG |
 | falkordb | 6380 | full/graph | Config-gated, 16GB+ RAM only |
-| sidecar | 8100 | full/zim | Python FastAPI (ZIM + entity extraction) |
+| sidecar | 8100 | full/zim | Python FastAPI (ZIM + entity extraction + whisper.cpp) |
+| opentakserver | 8089/8443/8080 | tak | TAK CoT bridge for ATAK/iTAK interop |
+| y-websocket | 4444 | sync | Yjs CRDT sync server for multi-node replication |
+
+### COOP-Specific Patterns
+
+- **ICS activity logs are append-only** — corrections are new rows with `corrects_id` FK, never UPDATEs. This is a schema constraint for crisis data integrity.
+- **Yjs CRDT sync runs as separate Node.js process** — NOT colocated with AdonisJS. Mixing y-websocket with AdonisJS WebSocket handling causes message routing conflicts.
+- **whisper.cpp runs inside the Python sidecar container** — avoids audio device Docker plumbing. Use `WHISPER_MODEL` env var (default `base.en` on M4 MacBook Pro, `small.en` on 24GB+).
+- **Target hardware is M4 MacBook Pro** — 16GB+ unified memory, Apple Silicon Metal GPU. All services run simultaneously. `full` Docker Compose profile is always viable. No Pi/embedded constraints.
+- **OpenTAKServer CoT parsing** — only implement standard CoT types: `a-f-G-U-C` (PLI) and `b-t-f` (GeoChat). Vendor extensions break parsers.
+- **Meshtastic sync bandwidth** — 250-byte payload per packet. Sync only delta hashes and text summaries over mesh. Full Yjs sync waits for WiFi.
+- **npm install requires `--legacy-peer-deps`** — `@rlanz/bull-queue@3.1.0` peers on `@adonisjs/core@^6`

@@ -14,6 +14,15 @@ import downloadContent from '#tools/download_content'
 import systemDiagnostics from '#tools/system_diagnostics'
 import manageModel from '#tools/manage_model'
 
+// ICS tools
+import icsDeclareIncident from '#tools/ics_declare_incident'
+import icsLogActivity from '#tools/ics_log_activity'
+import icsCheckIn from '#tools/ics_check_in'
+import icsResourceStatus from '#tools/ics_resource_status'
+import icsGenerateAAR from '#tools/ics_generate_aar'
+
+import ICSService from '#services/ics_service'
+
 interface ChatRequest {
   sessionId?: number
   message: string
@@ -55,6 +64,11 @@ export default class AIChatOrchestrator {
     this.toolRegistry.register(downloadContent)
     this.toolRegistry.register(systemDiagnostics)
     this.toolRegistry.register(manageModel)
+    this.toolRegistry.register(icsDeclareIncident)
+    this.toolRegistry.register(icsLogActivity)
+    this.toolRegistry.register(icsCheckIn)
+    this.toolRegistry.register(icsResourceStatus)
+    this.toolRegistry.register(icsGenerateAAR)
   }
 
   getToolRegistry(): ToolRegistry {
@@ -114,10 +128,21 @@ export default class AIChatOrchestrator {
             }
           }
 
+          // 3c. Inject ICS context if there's an active incident
+          let icsContextBlock: string | null = null
+          if (intent === 'incident_query' || intent === 'question' || intent === 'tool') {
+            try {
+              const icsService = new ICSService()
+              icsContextBlock = await icsService.buildContextBlock()
+            } catch {
+              // ICS tables may not exist yet
+            }
+          }
+
           // 4. Retrieve context if it's a question/search
           let contextBlocks: string[] = []
           let sources: Array<Record<string, unknown>> = []
-          if (intent === 'question' || intent === 'search') {
+          if (intent === 'question' || intent === 'search' || intent === 'incident_query') {
             const retrieval = await self.retrieveContext(request.message)
             contextBlocks = retrieval.contexts
             sources = retrieval.sources
@@ -149,7 +174,8 @@ export default class AIChatOrchestrator {
             history,
             request.message,
             contextBlocks,
-            toolDesc
+            toolDesc,
+            icsContextBlock
           )
 
           // 8. Stream generation
@@ -247,8 +273,9 @@ export default class AIChatOrchestrator {
         {
           role: 'system',
           content:
-            'Classify the user message into one category: question, search, tool, or chat.\n' +
-            '- "tool" = the user wants to perform an action (install, download, check status, manage models, run diagnostics)\n' +
+            'Classify the user message into one category: question, search, tool, incident_query, or chat.\n' +
+            '- "tool" = the user wants to perform an action (install, download, check status, manage models, run diagnostics, declare incident, log activity, check in, resource status)\n' +
+            '- "incident_query" = the user is asking about an active incident, personnel status, resources, essential functions, or COOP/BCP operations\n' +
             '- "question" = the user is asking about information in their knowledge base\n' +
             '- "search" = the user wants to find specific content\n' +
             '- "chat" = general conversation\n' +
@@ -257,7 +284,7 @@ export default class AIChatOrchestrator {
         { role: 'user', content: message },
       ])
       const intent = response.trim().toLowerCase()
-      if (['question', 'search', 'tool', 'chat'].includes(intent)) {
+      if (['question', 'search', 'tool', 'chat', 'incident_query'].includes(intent)) {
         return intent
       }
       return 'chat'
@@ -369,12 +396,16 @@ export default class AIChatOrchestrator {
     history: Array<{ role: string; content: string }>,
     userMessage: string,
     contextBlocks: string[],
-    toolDescriptions?: string
+    toolDescriptions?: string,
+    icsContextBlock?: string | null
   ): Array<{ role: string; content: string }> {
     const messages: Array<{ role: string; content: string }> = []
 
     // System prompt
     let system = systemPrompt || 'You are The Attic AI, a helpful knowledge assistant.'
+    if (icsContextBlock) {
+      system += '\n\n' + icsContextBlock
+    }
     if (toolDescriptions) {
       system += '\n\n' + toolDescriptions
     }

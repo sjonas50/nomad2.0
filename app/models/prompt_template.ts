@@ -11,6 +11,9 @@ export default class PromptTemplate extends BaseModel {
   declare slug: string
 
   @column()
+  declare category: string | null
+
+  @column()
   declare name: string
 
   @column()
