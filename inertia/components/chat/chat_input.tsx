@@ -43,7 +43,7 @@ export function ChatInput({ onSend, onStop, isLoading, disabled }: ChatInputProp
   }
 
   return (
-    <div className="border-t border-zinc-700 bg-zinc-900 p-4">
+    <div className="border-t border-zinc-800 bg-surface-900 p-4">
       <div className="max-w-3xl mx-auto flex gap-2 items-end">
         <textarea
           ref={textareaRef}
@@ -53,7 +53,7 @@ export function ChatInput({ onSend, onStop, isLoading, disabled }: ChatInputProp
           placeholder="Ask anything..."
           disabled={disabled}
           rows={1}
-          className="flex-1 bg-zinc-800 text-zinc-100 border border-zinc-600 rounded-xl px-4 py-3 resize-none focus:outline-none focus:border-blue-500 placeholder-zinc-500 disabled:opacity-50"
+          className="flex-1 bg-surface-800 text-zinc-100 border border-zinc-700 rounded-xl px-4 py-3 resize-none focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 placeholder-zinc-500 disabled:opacity-50 transition-colors"
         />
         {isLoading ? (
           <button
@@ -66,7 +66,7 @@ export function ChatInput({ onSend, onStop, isLoading, disabled }: ChatInputProp
           <button
             onClick={handleSubmit}
             disabled={!input.trim() || disabled}
-            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send
           </button>

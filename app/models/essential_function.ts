@@ -23,19 +23,34 @@ export default class EssentialFunction extends BaseModel {
 
   @column({
     prepare: (value: unknown[] | null) => (value ? JSON.stringify(value) : null),
-    consume: (value: string | null) => (value ? JSON.parse(value) : null),
+    consume: (value: unknown) => {
+      if (!value) return null
+      if (typeof value === 'object') return value
+      if (typeof value === 'string') return JSON.parse(value)
+      return null
+    },
   })
   declare primaryPersonnel: unknown[] | null
 
   @column({
     prepare: (value: unknown[] | null) => (value ? JSON.stringify(value) : null),
-    consume: (value: string | null) => (value ? JSON.parse(value) : null),
+    consume: (value: unknown) => {
+      if (!value) return null
+      if (typeof value === 'object') return value
+      if (typeof value === 'string') return JSON.parse(value)
+      return null
+    },
   })
   declare alternatePersonnel: unknown[] | null
 
   @column({
     prepare: (value: unknown[] | null) => (value ? JSON.stringify(value) : null),
-    consume: (value: string | null) => (value ? JSON.parse(value) : null),
+    consume: (value: unknown) => {
+      if (!value) return null
+      if (typeof value === 'object') return value
+      if (typeof value === 'string') return JSON.parse(value)
+      return null
+    },
   })
   declare procedures: unknown[] | null
 

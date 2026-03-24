@@ -52,6 +52,7 @@ export default await Env.create(new URL('../', import.meta.url), {
   FALKORDB_PORT: Env.schema.number.optional(),
 
   // Python sidecar
+  SIDECAR_ENABLED: Env.schema.boolean.optional(),
   SIDECAR_URL: Env.schema.string.optional(),
 
   // Storage directories
@@ -64,4 +65,8 @@ export default await Env.create(new URL('../', import.meta.url), {
   MQTT_TOPIC: Env.schema.string.optional(),
   MQTT_USERNAME: Env.schema.string.optional(),
   MQTT_PASSWORD: Env.schema.string.optional(),
+
+  // CoT / TAK multicast
+  COT_MULTICAST_ADDRESS: Env.schema.string.optional(),
+  COT_MULTICAST_PORT: Env.schema.number.optional(),
 })

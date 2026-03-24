@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon'
 import { BaseModel, column } from '@adonisjs/lucid/orm'
 
-export type ResourceType = 'zim' | 'pmtiles' | 'model' | 'other'
+export type ResourceType = 'zim' | 'pmtiles' | 'osm.pbf' | 'pdf' | 'model' | 'other'
 export type ResourceStatus = 'downloading' | 'installed' | 'embedding' | 'ready' | 'failed'
 
 export default class InstalledResource extends BaseModel {
@@ -37,7 +37,12 @@ export default class InstalledResource extends BaseModel {
 
   @column({
     prepare: (value: Record<string, unknown> | null) => (value ? JSON.stringify(value) : null),
-    consume: (value: string | null) => (value ? JSON.parse(value) : null),
+    consume: (value: unknown) => {
+      if (!value) return null
+      if (typeof value === 'object') return value
+      if (typeof value === 'string') return JSON.parse(value)
+      return null
+    },
   })
   declare metadata: Record<string, unknown> | null
 

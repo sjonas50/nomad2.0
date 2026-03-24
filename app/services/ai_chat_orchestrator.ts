@@ -2,6 +2,7 @@ import OllamaService from '#services/ollama_service'
 import EmbeddingService from '#services/embedding_service'
 import VectorStoreService from '#services/vector_store_service'
 import ToolRegistry from '#services/tool_registry'
+import logger from '@adonisjs/core/services/logger'
 import ChatSession from '#models/chat_session'
 import ChatMessage from '#models/chat_message'
 import ModelRole from '#models/model_role'
@@ -39,6 +40,7 @@ interface StreamChunk {
 const DEFAULT_MODEL = 'qwen2.5:1.5b'
 const CLASSIFIER_MODEL = 'qwen2.5:1.5b'
 const HISTORY_TURNS = 10
+const RELEVANCE_THRESHOLD = 0.55
 
 export default class AIChatOrchestrator {
   private ollama: OllamaService
@@ -139,10 +141,10 @@ export default class AIChatOrchestrator {
             }
           }
 
-          // 4. Retrieve context if it's a question/search
+          // 4. Always attempt RAG retrieval so the model can use knowledge base context
           let contextBlocks: string[] = []
           let sources: Array<Record<string, unknown>> = []
-          if (intent === 'question' || intent === 'search' || intent === 'incident_query') {
+          {
             const retrieval = await self.retrieveContext(request.message)
             contextBlocks = retrieval.contexts
             sources = retrieval.sources
@@ -330,12 +332,15 @@ export default class AIChatOrchestrator {
   ): Promise<{ contexts: string[]; sources: Array<Record<string, unknown>> }> {
     try {
       const queryVector = await this.embedding.embedQuery(query)
-      const results = await this.vectorStore.search(queryVector, undefined, 5)
+      const results = await this.vectorStore.search(queryVector, undefined, 10)
 
       const contexts: string[] = []
       const sources: Array<Record<string, unknown>> = []
 
       for (const result of results) {
+        // Skip low-relevance results to avoid showing unrelated sources
+        if (result.score < RELEVANCE_THRESHOLD) continue
+
         const content = result.payload?.content as string
         if (content) {
           contexts.push(content)
@@ -346,10 +351,14 @@ export default class AIChatOrchestrator {
             title: result.payload?.title,
           })
         }
+
+        // Cap at 5 relevant results
+        if (contexts.length >= 5) break
       }
 
       return { contexts, sources }
-    } catch {
+    } catch (err) {
+      logger.error({ err }, 'RAG retrieval failed')
       return { contexts: [], sources: [] }
     }
   }
@@ -386,7 +395,7 @@ export default class AIChatOrchestrator {
     return {
       modelName: DEFAULT_MODEL,
       systemPrompt:
-        'You are The Attic AI, a helpful knowledge assistant. Answer questions clearly and cite your sources when available.',
+        'You are The Attic AI, a knowledge-first assistant. When retrieved context from the knowledge base is provided, ALWAYS base your answer on it and cite sources. Only fall back to your own knowledge when no relevant context is found. Be specific and reference the actual content.',
       numCtx: 4096,
     }
   }
@@ -411,7 +420,10 @@ export default class AIChatOrchestrator {
     }
     if (contextBlocks.length > 0) {
       system +=
-        '\n\nUse the following retrieved context to answer. Cite sources by [number].\n\n' +
+        '\n\nIMPORTANT: The following context was retrieved from the user\'s knowledge base. ' +
+        'ALWAYS use this context to answer when it is relevant to the question. ' +
+        'Prefer knowledge base content over your own internal knowledge. ' +
+        'Cite sources by [number]. If the context does not answer the question, say so and offer what you know.\n\n' +
         contextBlocks.map((c, i) => `[${i + 1}] ${c}`).join('\n\n')
     }
     messages.push({ role: 'system', content: system })

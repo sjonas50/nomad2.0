@@ -5,6 +5,7 @@ import DownloadService from '#services/download_service'
 import { randomUUID } from 'node:crypto'
 import env from '#start/env'
 import SecurityMiddleware from '#middleware/security_middleware'
+import logger from '@adonisjs/core/services/logger'
 
 export default class LibraryController {
   /**
@@ -13,8 +14,9 @@ export default class LibraryController {
    */
   async index({ inertia }: HttpContext) {
     const manifest = new CollectionManifestService()
-    const [available, installed] = await Promise.all([
+    const [available, packs, installed] = await Promise.all([
       manifest.getAvailableContent(),
+      manifest.getContentPacks(),
       InstalledResource.query().orderBy('createdAt', 'desc'),
     ])
 
@@ -23,9 +25,23 @@ export default class LibraryController {
         id: item.id,
         name: item.name,
         description: item.description,
+        url: item.url,
         sizeMb: item.sizeMb,
         category: item.category,
         type: item.type,
+        tags: item.tags || [],
+      })),
+      packs: packs.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        icon: p.icon,
+        color: p.color,
+        items: p.items,
+        totalSizeMb: p.items.reduce((sum, itemId) => {
+          const item = available.find((a) => a.id === itemId)
+          return sum + (item?.sizeMb ?? 0)
+        }, 0),
       })),
       installed: installed.map((r) => ({
         id: r.id,
@@ -44,19 +60,27 @@ export default class LibraryController {
    */
   async download({ request, response }: HttpContext) {
     const { url, name, type } = request.only(['url', 'name', 'type'])
+    logger.info({ url, name, type }, 'Library download requested')
 
     if (!url || !name) {
+      logger.warn({ url, name }, 'Library download missing url or name')
       return response.badRequest({ error: 'URL and name are required' })
     }
 
     if (!SecurityMiddleware.isUrlSafe(url)) {
+      logger.warn({ url }, 'Library download URL blocked by security check')
       return response.badRequest({ error: 'URL targets a blocked network range' })
     }
 
+    const appRoot = new URL('../..', import.meta.url).pathname
+    const defaultStorage = (sub: string) => `${appRoot}storage/${sub}`
+
     const destDir =
-      type === 'pmtiles'
-        ? env.get('MAP_STORAGE_DIR', '/data/maps')
-        : env.get('ZIM_STORAGE_DIR', '/data/zim')
+      type === 'pmtiles' || type === 'osm.pbf'
+        ? env.get('MAP_STORAGE_DIR', defaultStorage('maps'))
+        : type === 'pdf'
+          ? env.get('PDF_STORAGE_DIR', defaultStorage('docs'))
+          : env.get('ZIM_STORAGE_DIR', defaultStorage('zim'))
 
     const fileName = url.split('/').pop() || `${name}.${type}`
 
@@ -72,6 +96,8 @@ export default class LibraryController {
     const downloadService = new DownloadService()
     const downloadId = randomUUID()
 
+    logger.info({ downloadId, destDir, fileName }, 'Starting background download')
+
     downloadService
       .download({
         id: downloadId,
@@ -84,11 +110,13 @@ export default class LibraryController {
         resource.fileSize = result.totalBytes
         resource.status = 'installed'
         await resource.save()
+        logger.info({ resourceId: resource.id, filePath: result.filePath }, 'Download installed')
       })
       .catch(async (error) => {
         resource.status = 'failed'
         resource.errorMessage = error instanceof Error ? error.message : 'Download failed'
         await resource.save()
+        logger.error({ resourceId: resource.id, error: resource.errorMessage }, 'Download failed')
       })
 
     return response.created({

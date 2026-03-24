@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiFetch } from '~/lib/fetch'
 
 interface Session {
   id: number
@@ -43,7 +44,7 @@ export function SessionSidebar({
   const handleDelete = async (e: React.MouseEvent, sessionId: number) => {
     e.stopPropagation()
     try {
-      await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' })
+      await apiFetch(`/api/sessions/${sessionId}`, { method: 'DELETE' })
       setSessions((prev) => prev.filter((s) => s.id !== sessionId))
       if (currentSessionId === sessionId) {
         onNewChat()
@@ -54,11 +55,11 @@ export function SessionSidebar({
   }
 
   return (
-    <div className="w-64 bg-zinc-900 border-r border-zinc-700 flex flex-col h-full">
-      <div className="p-3 border-b border-zinc-700">
+    <div className="w-64 bg-surface-900 border-r border-zinc-800 flex flex-col h-full">
+      <div className="p-3 border-b border-zinc-800">
         <button
           onClick={onNewChat}
-          className="w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-sm font-medium border border-zinc-600 transition-colors"
+          className="w-full px-3 py-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 rounded-lg text-sm font-medium border border-brand-500/20 transition-colors"
         >
           + New Chat
         </button>

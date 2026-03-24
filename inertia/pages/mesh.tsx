@@ -98,7 +98,7 @@ export default function Mesh({ enabled, messages: initialMessages, nodes, channe
             <button
               onClick={handleSummary}
               disabled={loadingSummary}
-              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
+              className="px-3 py-1.5 text-sm bg-brand-500 hover:bg-brand-600 text-white rounded disabled:opacity-50"
             >
               {loadingSummary ? 'Summarizing...' : 'AI Summary'}
             </button>
@@ -116,13 +116,13 @@ export default function Mesh({ enabled, messages: initialMessages, nodes, channe
         <div className="flex gap-4 mb-4 border-b border-zinc-700">
           <button
             onClick={() => setTab('messages')}
-            className={`pb-2 text-sm ${tab === 'messages' ? 'text-white border-b-2 border-blue-500' : 'text-zinc-400'}`}
+            className={`pb-2 text-sm ${tab === 'messages' ? 'text-white border-b-2 border-brand-500' : 'text-zinc-400'}`}
           >
             Messages ({messages.length})
           </button>
           <button
             onClick={() => setTab('nodes')}
-            className={`pb-2 text-sm ${tab === 'nodes' ? 'text-white border-b-2 border-blue-500' : 'text-zinc-400'}`}
+            className={`pb-2 text-sm ${tab === 'nodes' ? 'text-white border-b-2 border-brand-500' : 'text-zinc-400'}`}
           >
             Nodes ({nodes.length})
           </button>
@@ -134,7 +134,7 @@ export default function Mesh({ enabled, messages: initialMessages, nodes, channe
             <div className="flex gap-2 mb-4 flex-wrap">
               <button
                 onClick={() => setActiveChannel(null)}
-                className={`px-3 py-1 text-xs rounded-full ${!activeChannel ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
+                className={`px-3 py-1 text-xs rounded-full ${!activeChannel ? 'bg-brand-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
               >
                 All
               </button>
@@ -142,7 +142,7 @@ export default function Mesh({ enabled, messages: initialMessages, nodes, channe
                 <button
                   key={ch}
                   onClick={() => setActiveChannel(ch)}
-                  className={`px-3 py-1 text-xs rounded-full ${activeChannel === ch ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
+                  className={`px-3 py-1 text-xs rounded-full ${activeChannel === ch ? 'bg-brand-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
                 >
                   {ch}
                 </button>

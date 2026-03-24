@@ -1,14 +1,25 @@
+import { createSocket, type Socket as DgramSocket } from 'node:dgram'
+import CoT, { CoTParser } from '@tak-ps/node-cot'
+import env from '#start/env'
 import logger from '@adonisjs/core/services/logger'
 
 /**
- * Cursor-on-Target (CoT) XML service for TAK ecosystem interoperability.
+ * Cursor-on-Target (CoT) service for TAK ecosystem interoperability.
+ *
+ * Uses @tak-ps/node-cot for proper CoT XML generation/parsing and
+ * node:dgram for UDP multicast broadcast (TAK-server-free deployments).
  *
  * Supported CoT event types:
  * - a-f-G-U-C: Friendly ground unit (Position Location Information / PLI)
+ * - b-m-p-s-p-i: Map marker / Point of Interest
  * - b-t-f: Free text (GeoChat messages)
  * - a-u-G: Unknown ground unit
  * - b-r-f-h-c: Alert/hazard
  */
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface CoTEvent {
   uid: string
@@ -47,43 +58,284 @@ export interface CoTGeoChat {
   time: string
 }
 
+export interface GeoJSONPoint {
+  type: 'Feature'
+  geometry: {
+    type: 'Point'
+    coordinates: [number, number, number?]
+  }
+  properties: Record<string, unknown>
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
 export default class CoTService {
+  private multicastAddress: string
+  private multicastPort: number
+  private udpSocket: DgramSocket | null = null
+  private broadcasting = false
+
+  constructor() {
+    this.multicastAddress = env.get('COT_MULTICAST_ADDRESS', '239.2.3.1') as string
+    this.multicastPort = env.get('COT_MULTICAST_PORT', 6969) as number
+  }
+
+  // -----------------------------------------------------------------------
+  // UDP multicast lifecycle
+  // -----------------------------------------------------------------------
+
   /**
-   * Parse a CoT XML event string into a structured object.
+   * Initialize the UDP multicast socket for broadcasting CoT events.
+   */
+  startBroadcasting(): void {
+    if (this.udpSocket) return
+
+    this.udpSocket = createSocket({ type: 'udp4', reuseAddr: true })
+
+    this.udpSocket.on('error', (err) => {
+      logger.error({ err }, 'CoT UDP multicast socket error')
+      this.stopBroadcasting()
+    })
+
+    this.udpSocket.bind(() => {
+      if (!this.udpSocket) return
+      this.udpSocket.setBroadcast(true)
+      try {
+        this.udpSocket.setMulticastTTL(32)
+        this.udpSocket.addMembership(this.multicastAddress)
+      } catch (err) {
+        logger.warn({ err }, 'Could not join multicast group (may still work for sending)')
+      }
+      this.broadcasting = true
+      logger.info(
+        { address: this.multicastAddress, port: this.multicastPort },
+        'CoT UDP multicast broadcasting started'
+      )
+    })
+  }
+
+  /**
+   * Tear down the UDP multicast socket.
+   */
+  stopBroadcasting(): void {
+    if (this.udpSocket) {
+      try {
+        this.udpSocket.dropMembership(this.multicastAddress)
+      } catch {
+        // may not have joined yet
+      }
+      this.udpSocket.close()
+      this.udpSocket = null
+    }
+    this.broadcasting = false
+    logger.info('CoT UDP multicast broadcasting stopped')
+  }
+
+  /**
+   * Whether the UDP multicast socket is active.
+   */
+  isBroadcasting(): boolean {
+    return this.broadcasting
+  }
+
+  /**
+   * Send raw CoT XML over UDP multicast.
+   */
+  sendMulticast(xml: string): boolean {
+    if (!this.udpSocket || !this.broadcasting) return false
+
+    const buf = Buffer.from(xml, 'utf-8')
+    this.udpSocket.send(buf, 0, buf.length, this.multicastPort, this.multicastAddress, (err) => {
+      if (err) {
+        logger.warn({ err }, 'Failed to send CoT multicast packet')
+      }
+    })
+    return true
+  }
+
+  // -----------------------------------------------------------------------
+  // CoT creation helpers (using @tak-ps/node-cot)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Create a CoT position report (PLI) for a friendly ground unit.
+   */
+  createPositionReport(input: {
+    uid: string
+    callsign: string
+    latitude: number
+    longitude: number
+    altitude?: number
+    team?: string
+    role?: string
+    staleMins?: number
+  }): CoT {
+    const now = new Date().toISOString()
+    const stale = new Date(Date.now() + (input.staleMins ?? 5) * 60000).toISOString()
+
+    const detail: Record<string, unknown> = {
+      contact: { _attributes: { callsign: input.callsign } },
+      precisionlocation: { _attributes: { altsrc: 'GPS' } },
+      track: { _attributes: { course: '0', speed: '0' } },
+    }
+
+    if (input.team) {
+      detail.__group = {
+        _attributes: {
+          name: input.team,
+          role: input.role || 'Team Member',
+        },
+      }
+    }
+
+    return new CoT({
+      event: {
+        _attributes: {
+          version: '2.0',
+          uid: input.uid,
+          type: 'a-f-G-U-C',
+          how: 'm-g',
+          time: now,
+          start: now,
+          stale,
+        },
+        point: {
+          _attributes: {
+            lat: input.latitude,
+            lon: input.longitude,
+            hae: input.altitude ?? 0,
+            ce: 35.0,
+            le: 999999,
+          },
+        },
+        detail,
+      },
+    })
+  }
+
+  /**
+   * Create a CoT marker / Point of Interest.
+   */
+  createMarker(input: {
+    uid: string
+    name: string
+    latitude: number
+    longitude: number
+    remarks?: string
+    staleMins?: number
+  }): CoT {
+    const now = new Date().toISOString()
+    const stale = new Date(Date.now() + (input.staleMins ?? 60) * 60000).toISOString()
+
+    const detail: Record<string, unknown> = {
+      contact: { _attributes: { callsign: input.name } },
+    }
+    if (input.remarks) {
+      detail.remarks = { _text: input.remarks }
+    }
+
+    return new CoT({
+      event: {
+        _attributes: {
+          version: '2.0',
+          uid: input.uid,
+          type: 'b-m-p-s-p-i',
+          how: 'h-e',
+          time: now,
+          start: now,
+          stale,
+        },
+        point: {
+          _attributes: {
+            lat: input.latitude,
+            lon: input.longitude,
+            hae: 0,
+            ce: 9.9,
+            le: 9999999.0,
+          },
+        },
+        detail,
+      },
+    })
+  }
+
+  /**
+   * Create a CoT alert event (e.g. incident declaration).
+   */
+  createAlert(input: {
+    uid: string
+    name: string
+    type: string
+    latitude: number
+    longitude: number
+    remarks?: string
+  }): CoT {
+    const now = new Date().toISOString()
+    const stale = new Date(Date.now() + 60 * 60000).toISOString()
+
+    return new CoT({
+      event: {
+        _attributes: {
+          version: '2.0',
+          uid: input.uid,
+          type: 'b-r-f-h-c',
+          how: 'h-e',
+          time: now,
+          start: now,
+          stale,
+        },
+        point: {
+          _attributes: {
+            lat: input.latitude,
+            lon: input.longitude,
+            hae: 0,
+            ce: 999999,
+            le: 999999,
+          },
+        },
+        detail: {
+          contact: { _attributes: { callsign: input.name } },
+          remarks: { _text: input.remarks || `Incident: ${input.name} (${input.type})` },
+        },
+      },
+    })
+  }
+
+  // -----------------------------------------------------------------------
+  // Parsing incoming CoT XML
+  // -----------------------------------------------------------------------
+
+  /**
+   * Parse a CoT XML string into a structured CoTEvent.
+   * Uses @tak-ps/node-cot for robust parsing.
    */
   parseEvent(xml: string): CoTEvent | null {
     try {
-      // Simple regex-based XML parser for CoT events
-      // CoT XML is well-structured and predictable, no need for full XML parser
-      const eventMatch = xml.match(
-        /<event\s+([^>]+)>/
-      )
-      if (!eventMatch) return null
+      const cot = CoTParser.from_xml(xml)
+      const raw = cot.raw as any
 
-      const attrs = this.parseAttributes(eventMatch[1])
-      const pointMatch = xml.match(/<point\s+([^>]*)\/>/)
-      const pointAttrs = pointMatch ? this.parseAttributes(pointMatch[1]) : {}
-
-      const contactMatch = xml.match(/<contact\s+([^>]*)\/>/)
-      const contactAttrs = contactMatch ? this.parseAttributes(contactMatch[1]) : {}
-
-      const groupMatch = xml.match(/<__group\s+([^>]*)\/>/)
-      const groupAttrs = groupMatch ? this.parseAttributes(groupMatch[1]) : {}
-
-      const remarksMatch = xml.match(/<remarks[^>]*>([\s\S]*?)<\/remarks>/)
+      const eventAttrs = raw?.event?._attributes || {}
+      const pointAttrs = raw?.event?.point?._attributes || {}
+      const detail = raw?.event?.detail || {}
+      const contactAttrs = detail?.contact?._attributes || {}
+      const groupAttrs = detail?.__group?._attributes || {}
+      const remarksText =
+        detail?.remarks?._text || (detail?.remarks as any)?._cdata || null
 
       return {
-        uid: attrs.uid || '',
-        type: attrs.type || '',
-        time: attrs.time || '',
-        start: attrs.start || '',
-        stale: attrs.stale || '',
-        how: attrs.how || 'h-e',
-        latitude: parseFloat(pointAttrs.lat || '0'),
-        longitude: parseFloat(pointAttrs.lon || '0'),
-        altitude: parseFloat(pointAttrs.hae || '0'),
+        uid: String(eventAttrs.uid || ''),
+        type: String(eventAttrs.type || ''),
+        time: String(eventAttrs.time || ''),
+        start: String(eventAttrs.start || ''),
+        stale: String(eventAttrs.stale || ''),
+        how: String(eventAttrs.how || 'h-e'),
+        latitude: Number.parseFloat(String(pointAttrs.lat || '0')),
+        longitude: Number.parseFloat(String(pointAttrs.lon || '0')),
+        altitude: Number.parseFloat(String(pointAttrs.hae || '0')),
         callsign: contactAttrs.callsign || null,
-        remarks: remarksMatch?.[1]?.trim() || null,
+        remarks: remarksText,
         team: groupAttrs.name || null,
         role: groupAttrs.role || null,
       }
@@ -92,6 +344,76 @@ export default class CoTService {
       return null
     }
   }
+
+  // -----------------------------------------------------------------------
+  // CoT <-> GeoJSON conversion
+  // -----------------------------------------------------------------------
+
+  /**
+   * Convert a CoTEvent to a GeoJSON Feature for map rendering.
+   */
+  toGeoJSON(event: CoTEvent): GeoJSONPoint {
+    return {
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [event.longitude, event.latitude, event.altitude],
+      },
+      properties: {
+        uid: event.uid,
+        type: event.type,
+        callsign: event.callsign,
+        remarks: event.remarks,
+        team: event.team,
+        role: event.role,
+        how: event.how,
+        time: event.time,
+        stale: event.stale,
+      },
+    }
+  }
+
+  /**
+   * Convert a GeoJSON Feature (Point) to a CoT XML string.
+   * Useful for sending map-drawn features to TAK devices.
+   */
+  geoJSONToCoTXml(feature: GeoJSONPoint): string {
+    const coords = feature.geometry.coordinates
+    const props = feature.properties || {}
+
+    const uid = (props.uid as string) || `nomad-${Date.now()}`
+    const callsign = (props.callsign as string) || (props.name as string) || uid
+    const cotType = (props.type as string) || 'a-f-G-U-C'
+    const remarks = (props.remarks as string) || undefined
+
+    const isPosition = cotType.startsWith('a-')
+
+    if (isPosition) {
+      const cot = this.createPositionReport({
+        uid,
+        callsign,
+        latitude: coords[1],
+        longitude: coords[0],
+        altitude: coords[2],
+        team: props.team as string | undefined,
+        role: props.role as string | undefined,
+      })
+      return CoTParser.to_xml(cot)
+    }
+
+    const cot = this.createMarker({
+      uid,
+      name: callsign,
+      latitude: coords[1],
+      longitude: coords[0],
+      remarks,
+    })
+    return CoTParser.to_xml(cot)
+  }
+
+  // -----------------------------------------------------------------------
+  // Event classification helpers
+  // -----------------------------------------------------------------------
 
   /**
    * Determine if a CoT event is a PLI (Position Location Information).
@@ -140,8 +462,12 @@ export default class CoTService {
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Legacy XML generation wrappers (keep backward compat with cot_publisher)
+  // -----------------------------------------------------------------------
+
   /**
-   * Generate a CoT PLI XML event from position data.
+   * Generate a CoT PLI XML string. Legacy API — prefer createPositionReport().
    */
   generatePLI(input: {
     uid: string
@@ -152,34 +478,11 @@ export default class CoTService {
     team?: string
     role?: string
   }): string {
-    const now = new Date()
-    const stale = new Date(now.getTime() + 120000) // 2 minutes stale
-    const time = now.toISOString()
-
-    const groupTag = input.team
-      ? `<__group name="${this.escapeXml(input.team)}" role="${this.escapeXml(input.role || 'Team Member')}"/>`
-      : ''
-
-    return [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      `<event version="2.0" uid="${this.escapeXml(input.uid)}" type="a-f-G-U-C"`,
-      `  time="${time}" start="${time}" stale="${stale.toISOString()}" how="m-g">`,
-      `  <point lat="${input.latitude}" lon="${input.longitude}"`,
-      `    hae="${input.altitude || 0}" ce="35.0" le="999999"/>`,
-      `  <detail>`,
-      `    <contact callsign="${this.escapeXml(input.callsign)}"/>`,
-      groupTag ? `    ${groupTag}` : '',
-      `    <precisionlocation altsrc="GPS"/>`,
-      `    <track course="0" speed="0"/>`,
-      `  </detail>`,
-      `</event>`,
-    ]
-      .filter(Boolean)
-      .join('\n')
+    return CoTParser.to_xml(this.createPositionReport(input))
   }
 
   /**
-   * Generate a CoT alert event for an incident declaration.
+   * Generate a CoT alert XML string. Legacy API — prefer createAlert().
    */
   generateAlert(input: {
     uid: string
@@ -189,39 +492,6 @@ export default class CoTService {
     longitude: number
     remarks?: string
   }): string {
-    const now = new Date()
-    const stale = new Date(now.getTime() + 3600000) // 1 hour stale
-    const time = now.toISOString()
-
-    return [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      `<event version="2.0" uid="${this.escapeXml(input.uid)}" type="b-r-f-h-c"`,
-      `  time="${time}" start="${time}" stale="${stale.toISOString()}" how="h-e">`,
-      `  <point lat="${input.latitude}" lon="${input.longitude}" hae="0" ce="999999" le="999999"/>`,
-      `  <detail>`,
-      `    <contact callsign="${this.escapeXml(input.name)}"/>`,
-      `    <remarks>${this.escapeXml(input.remarks || `Incident: ${input.name} (${input.type})`)}</remarks>`,
-      `  </detail>`,
-      `</event>`,
-    ].join('\n')
-  }
-
-  private parseAttributes(attrString: string): Record<string, string> {
-    const attrs: Record<string, string> = {}
-    const regex = /(\w+)="([^"]*)"/g
-    let match
-    while ((match = regex.exec(attrString)) !== null) {
-      attrs[match[1]] = match[2]
-    }
-    return attrs
-  }
-
-  private escapeXml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;')
+    return CoTParser.to_xml(this.createAlert(input))
   }
 }

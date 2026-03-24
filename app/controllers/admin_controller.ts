@@ -53,6 +53,43 @@ export default class AdminController {
   // --- User Management ---
 
   /**
+   * Create a new user.
+   * POST /api/admin/users
+   */
+  async createUser(ctx: HttpContext) {
+    this.assertAdmin(ctx)
+    const { request, response } = ctx
+    const { fullName, email, password, role } = request.only(['fullName', 'email', 'password', 'role'])
+
+    if (!fullName?.trim() || !email?.trim() || !password || password.length < 8) {
+      return response.badRequest({ error: 'Full name, email, and password (min 8 chars) are required' })
+    }
+    if (!['viewer', 'operator', 'admin'].includes(role)) {
+      return response.badRequest({ error: 'Invalid role' })
+    }
+
+    const existing = await User.findBy('email', email.trim())
+    if (existing) {
+      return response.conflict({ error: 'A user with that email already exists' })
+    }
+
+    const user = await User.create({
+      fullName: fullName.trim(),
+      email: email.trim(),
+      password,
+      role,
+    })
+
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt?.toISO(),
+    }
+  }
+
+  /**
    * List users.
    * GET /api/admin/users
    */

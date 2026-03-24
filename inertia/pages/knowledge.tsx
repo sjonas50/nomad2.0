@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react'
 import { useState, useRef } from 'react'
 import AppLayout from '~/layouts/app_layout'
+import { apiFetch } from '~/lib/fetch'
 
 interface Source {
   id: number
@@ -53,7 +54,7 @@ export default function Knowledge({ sources }: Props) {
     formData.append('file', file)
 
     try {
-      const res = await fetch('/api/knowledge/upload', {
+      const res = await apiFetch('/api/knowledge/upload', {
         method: 'POST',
         body: formData,
       })
@@ -75,7 +76,7 @@ export default function Knowledge({ sources }: Props) {
     if (!textTitle.trim() || !textContent.trim()) return
 
     try {
-      const res = await fetch('/api/knowledge/text', {
+      const res = await apiFetch('/api/knowledge/text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: textTitle, content: textContent }),
@@ -97,7 +98,7 @@ export default function Knowledge({ sources }: Props) {
 
   const handleDelete = async (id: number) => {
     try {
-      await fetch(`/api/knowledge/${id}`, { method: 'DELETE' })
+      await apiFetch(`/api/knowledge/${id}`, { method: 'DELETE' })
       setItems((prev) => prev.filter((s) => s.id !== id))
     } catch {
       // ignore
@@ -106,7 +107,7 @@ export default function Knowledge({ sources }: Props) {
 
   const handleReEmbed = async (id: number) => {
     try {
-      await fetch(`/api/knowledge/${id}/re-embed`, { method: 'POST' })
+      await apiFetch(`/api/knowledge/${id}/re-embed`, { method: 'POST' })
       setItems((prev) =>
         prev.map((s) => (s.id === id ? { ...s, status: 'pending', chunkCount: 0 } : s))
       )
@@ -128,7 +129,7 @@ export default function Knowledge({ sources }: Props) {
             >
               + Add Text
             </button>
-            <label className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm cursor-pointer">
+            <label className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm cursor-pointer">
               {isUploading ? 'Uploading...' : '+ Upload File'}
               <input
                 ref={fileInputRef}
@@ -169,7 +170,7 @@ export default function Knowledge({ sources }: Props) {
               <button
                 onClick={handleTextSubmit}
                 disabled={!textTitle.trim() || !textContent.trim()}
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm disabled:opacity-50"
+                className="px-4 py-1.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm disabled:opacity-50"
               >
                 Ingest
               </button>

@@ -49,7 +49,17 @@ export default class SecurityMiddleware {
     // 1. CSP headers
     response.header(
       'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'"
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+        "style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
+        "img-src 'self' data: blob: https://tile.openstreetmap.org",
+        "connect-src 'self' https://tile.openstreetmap.org https://cdn.protomaps.com https://build.protomaps.com ws://localhost:* ws://127.0.0.1:*",
+        "font-src 'self' https://cdn.protomaps.com https://fonts.bunny.net",
+        "worker-src 'self' blob:",
+        "child-src 'self' blob:",
+        "frame-ancestors 'none'",
+      ].join('; ')
     )
     response.header('X-Content-Type-Options', 'nosniff')
     response.header('X-Frame-Options', 'DENY')

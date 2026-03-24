@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch } from '~/lib/fetch'
 
 interface SyncPeer {
   id: string
@@ -54,7 +55,7 @@ export default function SyncStatus() {
     setExporting(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/sync/export', {
+      const res = await apiFetch('/api/sync/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ incidentId }),
@@ -80,7 +81,7 @@ export default function SyncStatus() {
     const formData = new FormData()
     formData.append('bundle', file)
     try {
-      const res = await fetch('/api/sync/import', {
+      const res = await apiFetch('/api/sync/import', {
         method: 'POST',
         body: formData,
       })
@@ -111,7 +112,7 @@ export default function SyncStatus() {
   }
 
   const deleteBundle = async (filename: string) => {
-    await fetch(`/api/sync/bundles/${encodeURIComponent(filename)}`, { method: 'DELETE' })
+    await apiFetch(`/api/sync/bundles/${encodeURIComponent(filename)}`, { method: 'DELETE' })
     fetchBundles()
   }
 
@@ -125,12 +126,16 @@ export default function SyncStatus() {
     <div className="space-y-6">
       {/* State Hash */}
       <div className="flex items-center gap-4">
-        <span className="text-sm text-gray-500">State Hash:</span>
-        <code className="rounded bg-gray-100 px-2 py-1 text-xs font-mono">{stateHash || '...'}</code>
+        <span className="text-sm text-zinc-500">State Hash:</span>
+        <code className="rounded-lg bg-surface-900 border border-zinc-800 px-2.5 py-1 text-xs font-mono text-zinc-400">{stateHash || '...'}</code>
       </div>
 
       {message && (
-        <div className={`rounded px-3 py-2 text-sm ${message.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+        <div className={`rounded-lg px-3 py-2 text-sm ${
+          message.startsWith('Error')
+            ? 'bg-red-500/10 border border-red-500/20 text-red-400'
+            : 'bg-green-500/10 border border-green-500/20 text-green-400'
+        }`}>
           {message}
         </div>
       )}
@@ -140,11 +145,11 @@ export default function SyncStatus() {
         <button
           onClick={() => exportBundle()}
           disabled={exporting}
-          className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-lg bg-brand-500 px-4 py-2 text-sm text-white font-medium hover:bg-brand-600 disabled:opacity-50 transition-colors"
         >
           {exporting ? 'Exporting...' : 'Export Full Bundle'}
         </button>
-        <label className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
+        <label className="cursor-pointer rounded-lg border border-zinc-700 bg-surface-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700 transition-colors">
           Import Bundle
           <input
             type="file"
@@ -162,27 +167,27 @@ export default function SyncStatus() {
       {/* Peers */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-medium">Discovered Peers</h4>
+          <h4 className="text-sm font-medium text-zinc-200">Discovered Peers</h4>
           <button
             onClick={scanPeers}
             disabled={scanning}
-            className="text-xs text-blue-600 hover:underline"
+            className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
           >
             {scanning ? 'Scanning...' : 'Scan Network'}
           </button>
         </div>
         {peers.length === 0 ? (
-          <p className="text-sm text-gray-500">No peers discovered. Connect to a shared network and scan.</p>
+          <p className="text-sm text-zinc-500">No peers discovered. Connect to a shared network and scan.</p>
         ) : (
           <div className="space-y-1">
             {peers.map((p) => (
-              <div key={p.id} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+              <div key={p.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-surface-800 px-3 py-2.5 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${p.online ? 'bg-green-500' : 'bg-gray-400'}`} />
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-gray-400">{p.host}:{p.port}</span>
+                  <span className={`h-2 w-2 rounded-full ${p.online ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                  <span className="font-medium text-zinc-200">{p.name}</span>
+                  <span className="text-zinc-600">{p.host}:{p.port}</span>
                 </div>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-zinc-600">
                   {p.lastSyncAt ? `Last sync: ${new Date(p.lastSyncAt).toLocaleString()}` : 'Never synced'}
                 </span>
               </div>
@@ -193,27 +198,27 @@ export default function SyncStatus() {
 
       {/* Bundles */}
       <div>
-        <h4 className="text-sm font-medium mb-2">Bundle History</h4>
+        <h4 className="text-sm font-medium text-zinc-200 mb-2">Bundle History</h4>
         {bundles.length === 0 ? (
-          <p className="text-sm text-gray-500">No bundles yet. Export one to get started.</p>
+          <p className="text-sm text-zinc-500">No bundles yet. Export one to get started.</p>
         ) : (
           <div className="space-y-1">
             {bundles.map((b) => (
-              <div key={b.filename} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+              <div key={b.filename} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-surface-800 px-3 py-2.5 text-sm">
                 <div>
-                  <span className="font-mono text-xs">{b.filename}</span>
-                  <span className="ml-2 text-gray-400">{formatSize(b.sizeBytes)}</span>
+                  <span className="font-mono text-xs text-zinc-300">{b.filename}</span>
+                  <span className="ml-2 text-zinc-600">{formatSize(b.sizeBytes)}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <a
                     href={`/api/sync/download/${encodeURIComponent(b.filename)}`}
-                    className="text-xs text-blue-600 hover:underline"
+                    className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
                   >
                     Download
                   </a>
                   <button
                     onClick={() => deleteBundle(b.filename)}
-                    className="text-xs text-red-500 hover:underline"
+                    className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
                   >
                     Delete
                   </button>

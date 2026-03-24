@@ -30,7 +30,12 @@ export default class CommunicationTree extends BaseModel {
 
   @column({
     prepare: (value: TreeContact[]) => JSON.stringify(value),
-    consume: (value: string | null) => (value ? JSON.parse(value) : []),
+    consume: (value: unknown) => {
+      if (!value) return []
+      if (typeof value === 'object') return value
+      if (typeof value === 'string') return JSON.parse(value)
+      return []
+    },
   })
   declare treeData: TreeContact[]
 

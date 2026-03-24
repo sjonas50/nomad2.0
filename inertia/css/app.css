@@ -1,1 +1,57 @@
 @import 'tailwindcss';
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+@theme {
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #1570ef;
+  --color-brand-600: #1260d4;
+  --color-brand-700: #0f4fba;
+  --color-brand-800: #0c3e9f;
+  --color-brand-900: #092d85;
+  --color-brand-950: #061b52;
+
+  --color-surface-50: #fafafa;
+  --color-surface-100: #f4f4f5;
+  --color-surface-200: #e4e4e7;
+  --color-surface-700: #27272a;
+  --color-surface-750: #202023;
+  --color-surface-800: #18181b;
+  --color-surface-850: #131316;
+  --color-surface-900: #0e0e11;
+  --color-surface-950: #09090b;
+}
+
+/* Smooth scrolling and better defaults */
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* Focus ring utility */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:ring-offset-1 focus:ring-offset-surface-900;
+}

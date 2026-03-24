@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react'
 import { useState } from 'react'
 import AppLayout from '~/layouts/app_layout'
+import { apiFetch } from '~/lib/fetch'
 
 interface Container {
   id: string
@@ -32,7 +33,7 @@ export default function Services({ containers: initial, dockerAvailable }: Props
   const action = async (id: string, act: string) => {
     setLoading((prev) => ({ ...prev, [id]: true }))
     try {
-      await fetch(`/api/services/${id}/${act}`, { method: 'POST' })
+      await apiFetch(`/api/services/${id}/${act}`, { method: 'POST' })
       // Refresh page after action
       const res = await fetch(window.location.href, { headers: { Accept: 'application/json' } })
       if (res.ok) {

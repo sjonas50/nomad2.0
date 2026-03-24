@@ -9,7 +9,7 @@ import { resolvePageComponent } from '@adonisjs/inertia/helpers'
 const appName = 'The Attic AI'
 
 createInertiaApp({
-  progress: { color: '#3b82f6' },
+  progress: { color: '#1570ef' },
 
   title: (title) => (title ? `${title} — ${appName}` : appName),
 

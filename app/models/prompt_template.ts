@@ -21,7 +21,12 @@ export default class PromptTemplate extends BaseModel {
 
   @column({
     prepare: (value: string[] | null) => (value ? JSON.stringify(value) : null),
-    consume: (value: string | null) => (value ? JSON.parse(value) : null),
+    consume: (value: unknown) => {
+      if (!value) return null
+      if (typeof value === 'object') return value
+      if (typeof value === 'string') return JSON.parse(value)
+      return null
+    },
   })
   declare variables: string[] | null
 

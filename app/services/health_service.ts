@@ -47,9 +47,15 @@ export default class HealthService {
       entityExtraction: sidecarUp && ollamaUp,
     }
 
-    const downCount = services.filter((s) => s.status === 'down').length
+    // Only count required services (not optional disabled ones) toward overall health
+    const optionalDisabled = services.filter(
+      (s) => s.status === 'down' && s.message === 'Not enabled' || s.message === 'Disabled by config'
+    )
+    const requiredDown = services.filter(
+      (s) => s.status === 'down' && !optionalDisabled.includes(s)
+    )
     let overall: 'healthy' | 'degraded' | 'unhealthy'
-    if (downCount === 0) overall = 'healthy'
+    if (requiredDown.length === 0) overall = 'healthy'
     else if (ollamaUp) overall = 'degraded'
     else overall = 'unhealthy'
 
@@ -106,6 +112,10 @@ export default class HealthService {
   }
 
   private async checkSidecar(): Promise<ServiceHealth> {
+    const enabled = process.env.SIDECAR_ENABLED === 'true'
+    if (!enabled) {
+      return { name: 'sidecar', status: 'down', message: 'Not enabled' }
+    }
     const url = process.env.SIDECAR_URL || 'http://127.0.0.1:8100'
     return this.httpCheck('sidecar', `${url}/health`)
   }

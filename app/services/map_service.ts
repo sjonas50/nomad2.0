@@ -14,7 +14,12 @@ export default class MapService {
   private storageDir: string
 
   constructor() {
-    this.storageDir = env.get('MAP_STORAGE_DIR', '/data/maps')
+    const appRoot = new URL('../../', import.meta.url).pathname
+    this.storageDir = env.get('MAP_STORAGE_DIR', join(appRoot, 'storage', 'maps'))
+  }
+
+  getStorageDir(): string {
+    return this.storageDir
   }
 
   /**

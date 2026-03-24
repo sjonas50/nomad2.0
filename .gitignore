@@ -21,5 +21,13 @@ yarn-error.log
 .idea
 .vscode
 
+# Downloaded binaries
+.tools/
+
+# Storage data
+storage/maps/
+storage/zim/
+storage/docs/
+
 # Platform specific
 .DS_Store

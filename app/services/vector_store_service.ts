@@ -110,8 +110,9 @@ export default class VectorStoreService {
   }
 
   /**
-   * Hybrid search using Qdrant Query API with RRF fusion.
-   * When only a dense vector is provided, falls back to dense-only search.
+   * Vector search. Uses the simple search API for dense-only queries
+   * (compatible with all Qdrant versions), and the Query API with RRF
+   * fusion when sparse vectors are also provided.
    */
   async search(
     denseVector: number[],
@@ -119,6 +120,23 @@ export default class VectorStoreService {
     limit: number = 10,
     filter?: Record<string, unknown>
   ): Promise<SearchResult[]> {
+    // Dense-only: use the simple search API for broad compatibility
+    if (!sparseVector) {
+      const results = await this.client.search(this.collection, {
+        vector: { name: 'dense', vector: denseVector },
+        limit,
+        with_payload: true,
+        ...(filter ? { filter } : {}),
+      } as any)
+
+      return results.map((point: any) => ({
+        id: String(point.id),
+        score: point.score ?? 0,
+        payload: (point.payload ?? {}) as Record<string, unknown>,
+      }))
+    }
+
+    // Hybrid: use Query API with RRF fusion
     const prefetch = [
       {
         query: denseVector,
@@ -126,10 +144,7 @@ export default class VectorStoreService {
         limit: Math.max(limit * 4, 40),
         ...(filter ? { filter } : {}),
       },
-    ]
-
-    if (sparseVector) {
-      prefetch.push({
+      {
         query: {
           indices: sparseVector.indices,
           values: sparseVector.values,
@@ -137,15 +152,14 @@ export default class VectorStoreService {
         using: 'sparse',
         limit: Math.max(limit * 4, 40),
         ...(filter ? { filter } : {}),
-      })
-    }
+      },
+    ]
 
     const results = await this.client.query(this.collection, {
       prefetch,
-      query: sparseVector ? { fusion: 'rrf' } : undefined,
+      query: { fusion: 'rrf' },
       limit,
       with_payload: true,
-      ...(filter && !sparseVector ? { filter } : {}),
     } as any)
 
     return (results.points ?? []).map((point: any) => ({

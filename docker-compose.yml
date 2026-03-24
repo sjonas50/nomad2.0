@@ -60,7 +60,7 @@ services:
       start_period: 30s
 
   qdrant:
-    image: qdrant/qdrant:v1.13
+    image: qdrant/qdrant:v1.12.1
     container_name: attic_qdrant
     restart: unless-stopped
     ports:

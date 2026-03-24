@@ -54,8 +54,9 @@ export default function Home() {
             {messages.length === 0 ? (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center">
-                  <h1 className="text-3xl font-bold text-white mb-2">The Attic AI</h1>
-                  <p className="text-zinc-400">Ask me anything about your knowledge base</p>
+                  <img src="/images/logo.png" alt="The Attic AI" className="h-20 w-20 mx-auto mb-4 opacity-60" />
+                  <h1 className="text-2xl font-semibold text-white mb-1">The Attic AI</h1>
+                  <p className="text-sm text-zinc-500">Ask anything about your knowledge base, incidents, or operations</p>
                 </div>
               </div>
             ) : (

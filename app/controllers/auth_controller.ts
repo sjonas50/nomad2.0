@@ -1,9 +1,19 @@
 import type { HttpContext } from '@adonisjs/core/http'
+import { readFile, writeFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { join, dirname } from 'node:path'
 import User from '#models/user'
 import { loginValidator, setupValidator } from '#validators/auth'
 
 export default class AuthController {
-  async show({ inertia }: HttpContext) {
+  async show({ inertia, response }: HttpContext) {
+    const userCount = await User.query().count('* as total').first()
+    const total = Number(userCount?.$extras.total ?? 0)
+
+    if (total === 0) {
+      return response.redirect('/setup')
+    }
+
     return inertia.render('auth/login', {})
   }
 
@@ -47,14 +57,52 @@ export default class AuthController {
       return response.redirect().toRoute('auth.login')
     }
 
-    const data = await request.validateUsing(setupValidator)
+    const { enableFalkordb, enableSidecar, enableMesh, ...accountData } =
+      await request.validateUsing(setupValidator)
+
     const user = await User.create({
-      ...data,
+      ...accountData,
       role: 'admin',
     })
 
+    // Persist optional service flags to .env
+    await this.persistServiceFlags({
+      FALKORDB_ENABLED: enableFalkordb ?? false,
+      SIDECAR_ENABLED: enableSidecar ?? false,
+      MESH_ENABLED: enableMesh ?? false,
+    })
+
     await auth.use('web').login(user)
-    // @ts-expect-error — RoutesList not augmented; toRoute works at runtime
-    return response.redirect().toRoute('home')
+    return response.redirect('/getting-started')
+  }
+
+  /**
+   * Append or update service-enable flags in the .env file and set them
+   * on the current process so they take effect immediately.
+   */
+  private async persistServiceFlags(flags: Record<string, boolean>) {
+    const root = dirname(dirname(fileURLToPath(import.meta.url)))
+    const envPath = join(root, '.env')
+
+    let envContent: string
+    try {
+      envContent = await readFile(envPath, 'utf-8')
+    } catch {
+      envContent = ''
+    }
+
+    for (const [key, value] of Object.entries(flags)) {
+      const strVal = String(value)
+      const regex = new RegExp(`^${key}=.*$`, 'm')
+      if (regex.test(envContent)) {
+        envContent = envContent.replace(regex, `${key}=${strVal}`)
+      } else {
+        envContent = envContent.trimEnd() + `\n${key}=${strVal}\n`
+      }
+      // Set on running process so health checks pick it up immediately
+      process.env[key] = strVal
+    }
+
+    await writeFile(envPath, envContent)
   }
 }

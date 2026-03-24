@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react'
 import { useState } from 'react'
 import AppLayout from '~/layouts/app_layout'
+import { apiFetch } from '~/lib/fetch'
 
 interface WifiStatus {
   active: boolean
@@ -41,7 +42,7 @@ export default function Wifi({ available, status: initialStatus, config: initial
   const handleStart = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/wifi/start', {
+      const res = await apiFetch('/api/wifi/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ssid, password: password || undefined, channel }),
@@ -54,7 +55,7 @@ export default function Wifi({ available, status: initialStatus, config: initial
   const handleStop = async () => {
     setLoading(true)
     try {
-      await fetch('/api/wifi/stop', { method: 'POST' })
+      await apiFetch('/api/wifi/stop', { method: 'POST' })
       await refreshStatus()
     } catch { /* ignore */ }
     setLoading(false)

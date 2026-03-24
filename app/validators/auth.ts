@@ -12,5 +12,8 @@ export const setupValidator = vine.compile(
     fullName: vine.string().trim().minLength(1).maxLength(255),
     email: vine.string().email().trim(),
     password: vine.string().minLength(8).maxLength(255),
+    enableFalkordb: vine.boolean().optional(),
+    enableSidecar: vine.boolean().optional(),
+    enableMesh: vine.boolean().optional(),
   })
 )

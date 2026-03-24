@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react'
 import { useState } from 'react'
 import AppLayout from '~/layouts/app_layout'
+import { apiFetch } from '~/lib/fetch'
 
 interface ServiceHealth {
   name: string
@@ -56,10 +57,42 @@ export default function AdminDashboard({ health, users: initialUsers, recentLogs
   const [tab, setTab] = useState<'health' | 'users' | 'logs' | 'backups'>('health')
   const [backups, setBackups] = useState<Array<{ filename: string; sizeBytes: number; type: string; createdAt: string }>>([])
   const [backupLoading, setBackupLoading] = useState(false)
+  const [showAddUser, setShowAddUser] = useState(false)
+  const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '', role: 'viewer' })
+  const [addUserError, setAddUserError] = useState('')
+  const [addUserLoading, setAddUserLoading] = useState(false)
+
+  const createUser = async () => {
+    setAddUserError('')
+    if (!newUser.fullName.trim() || !newUser.email.trim() || newUser.password.length < 8) {
+      setAddUserError('All fields required. Password must be at least 8 characters.')
+      return
+    }
+    setAddUserLoading(true)
+    try {
+      const res = await apiFetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUser),
+      })
+      if (res.ok) {
+        const user = await res.json()
+        setUsers((prev) => [user, ...prev])
+        setNewUser({ fullName: '', email: '', password: '', role: 'viewer' })
+        setShowAddUser(false)
+      } else {
+        const body = await res.json().catch(() => null)
+        setAddUserError(body?.error || `Failed (${res.status})`)
+      }
+    } catch {
+      setAddUserError('Network error')
+    }
+    setAddUserLoading(false)
+  }
 
   const updateRole = async (userId: number, role: string) => {
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
+      const res = await apiFetch(`/api/admin/users/${userId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role }),
@@ -72,7 +105,7 @@ export default function AdminDashboard({ health, users: initialUsers, recentLogs
 
   const deleteUser = async (userId: number) => {
     try {
-      await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
+      await apiFetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
       setUsers((prev) => prev.filter((u) => u.id !== userId))
     } catch { /* ignore */ }
   }
@@ -87,7 +120,7 @@ export default function AdminDashboard({ health, users: initialUsers, recentLogs
   const createBackup = async (type: string) => {
     setBackupLoading(true)
     try {
-      await fetch('/api/admin/backup', {
+      await apiFetch('/api/admin/backup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type }),
@@ -109,7 +142,7 @@ export default function AdminDashboard({ health, users: initialUsers, recentLogs
             <button
               key={t}
               onClick={() => { setTab(t); if (t === 'backups') loadBackups() }}
-              className={`pb-2 text-sm capitalize ${tab === t ? 'text-white border-b-2 border-blue-500' : 'text-zinc-400'}`}
+              className={`pb-2 text-sm capitalize ${tab === t ? 'text-white border-b-2 border-brand-500' : 'text-zinc-400'}`}
             >
               {t}
             </button>
@@ -127,20 +160,25 @@ export default function AdminDashboard({ health, users: initialUsers, recentLogs
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              {health.services.map((s) => (
-                <div key={s.name} className="p-3 bg-zinc-800 rounded-lg border border-zinc-700">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${STATUS_COLORS[s.status]}`} />
-                      <span className="text-white font-medium capitalize">{s.name}</span>
+              {health.services.map((s) => {
+                const isOptionalDisabled = s.status === 'down' && (s.message === 'Not enabled' || s.message === 'Disabled by config')
+                const dotColor = isOptionalDisabled ? 'bg-zinc-600' : STATUS_COLORS[s.status]
+                return (
+                  <div key={s.name} className={`p-3 rounded-lg border ${isOptionalDisabled ? 'bg-zinc-800/50 border-zinc-800' : 'bg-zinc-800 border-zinc-700'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+                        <span className={`font-medium capitalize ${isOptionalDisabled ? 'text-zinc-500' : 'text-white'}`}>{s.name}</span>
+                        {isOptionalDisabled && <span className="text-[10px] text-zinc-600 uppercase">optional</span>}
+                      </div>
+                      <div className="text-xs text-zinc-500">
+                        {s.latencyMs !== undefined && !isOptionalDisabled && `${s.latencyMs}ms`}
+                      </div>
                     </div>
-                    <div className="text-xs text-zinc-500">
-                      {s.latencyMs !== undefined && `${s.latencyMs}ms`}
-                    </div>
+                    {s.message && !isOptionalDisabled && <div className="text-xs text-zinc-500 mt-1">{s.message}</div>}
                   </div>
-                  {s.message && <div className="text-xs text-zinc-500 mt-1">{s.message}</div>}
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             <div className="mt-4">
@@ -161,7 +199,70 @@ export default function AdminDashboard({ health, users: initialUsers, recentLogs
 
         {/* Users */}
         {tab === 'users' && (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            {/* Add User button / form */}
+            {!showAddUser ? (
+              <button
+                onClick={() => setShowAddUser(true)}
+                className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                + Add User
+              </button>
+            ) : (
+              <div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700 space-y-3">
+                <h3 className="text-sm font-semibold text-white">New User</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={newUser.fullName}
+                    onChange={(e) => setNewUser((p) => ({ ...p, fullName: e.target.value }))}
+                    className="px-3 py-2 text-sm bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:border-brand-500 focus:outline-none"
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))}
+                    className="px-3 py-2 text-sm bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:border-brand-500 focus:outline-none"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Password (min 8 chars)"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))}
+                    className="px-3 py-2 text-sm bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:border-brand-500 focus:outline-none"
+                  />
+                  <select
+                    value={newUser.role}
+                    onChange={(e) => setNewUser((p) => ({ ...p, role: e.target.value }))}
+                    className="px-3 py-2 text-sm bg-zinc-900 border border-zinc-700 rounded-lg text-white focus:border-brand-500 focus:outline-none"
+                  >
+                    <option value="viewer">Viewer</option>
+                    <option value="operator">Operator</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                {addUserError && <p className="text-sm text-red-400">{addUserError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={createUser}
+                    disabled={addUserLoading}
+                    className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+                  >
+                    {addUserLoading ? 'Creating...' : 'Create User'}
+                  </button>
+                  <button
+                    onClick={() => { setShowAddUser(false); setAddUserError('') }}
+                    className="px-4 py-2 text-zinc-400 hover:text-white text-sm transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* User list */}
             {users.map((u) => (
               <div key={u.id} className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg border border-zinc-700">
                 <div>
@@ -218,7 +319,7 @@ export default function AdminDashboard({ health, users: initialUsers, recentLogs
               <button
                 onClick={() => createBackup('mysql')}
                 disabled={backupLoading}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm disabled:opacity-50"
+                className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded text-sm disabled:opacity-50"
               >
                 {backupLoading ? 'Creating...' : 'Backup MySQL'}
               </button>

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { apiFetch } from '~/lib/fetch'
 
 interface ChatMessage {
   id: string
@@ -71,7 +72,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       const controller = new AbortController()
       abortRef.current = controller
 
-      fetch('/api/chat', {
+      apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, sessionId }),

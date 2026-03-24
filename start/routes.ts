@@ -24,6 +24,8 @@ const IncidentController = () => import('#controllers/incident_controller')
 const VoiceController = () => import('#controllers/voice_controller')
 const SyncController = () => import('#controllers/sync_controller')
 const MapController = () => import('#controllers/map_controller')
+const CotController = () => import('#controllers/cot_controller')
+const OnboardingController = () => import('#controllers/onboarding_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -45,6 +47,7 @@ router
     router.get('/incidents', [IncidentController, 'index']).as('incidents')
     router.get('/incidents/:id', [IncidentController, 'show']).as('incidents.show')
     router.get('/map', [MapController, 'index']).as('map')
+    router.get('/getting-started', [OnboardingController, 'index']).as('onboarding')
   })
   .use(middleware.auth())
 
@@ -112,6 +115,18 @@ router
     router.get('/map/geofences', [MapController, 'geofences']).use(middleware.auth())
     router.post('/map/geofences', [MapController, 'createGeofence']).use(middleware.auth())
     router.post('/map/position', [MapController, 'updatePosition']).use(middleware.auth())
+    router.get('/map/tiles/:filename', [MapController, 'serveTile']).use(middleware.auth())
+    router.post('/map/tiles/upload', [MapController, 'uploadTiles']).use(middleware.auth())
+    router.delete('/map/tiles/:filename', [MapController, 'deleteTiles']).use(middleware.auth())
+    router.get('/map/regions', [MapController, 'regions']).use(middleware.auth())
+    router.post('/map/extract', [MapController, 'extractRegion']).use(middleware.auth())
+    router.get('/map/extract/:regionId', [MapController, 'extractStatus']).use(middleware.auth())
+    router.delete('/map/regions/:regionId', [MapController, 'deleteRegion']).use(middleware.auth())
+
+    // CoT / TAK API
+    router.post('/cot/send', [CotController, 'send']).use(middleware.auth())
+    router.post('/cot/broadcast-markers', [CotController, 'broadcastMarkers']).use(middleware.auth())
+    router.get('/cot/status', [CotController, 'status']).use(middleware.auth())
 
     // Sync & Sneakernet API
     router.get('/sync/status', [SyncController, 'status']).use(middleware.auth())
@@ -122,8 +137,14 @@ router
     router.delete('/sync/bundles/:filename', [SyncController, 'deleteBundle']).use(middleware.auth())
     router.get('/sync/download/:filename', [SyncController, 'downloadBundle']).use(middleware.auth())
 
+    // Onboarding API
+    router.get('/onboarding/status', [OnboardingController, 'status']).use(middleware.auth())
+    router.post('/onboarding/pull-model', [OnboardingController, 'pullModel']).use(middleware.auth())
+    router.post('/onboarding/dismiss', [OnboardingController, 'dismiss']).use(middleware.auth())
+
     // Admin API (auth required, admin role checked in controller)
     router.get('/admin/users', [AdminController, 'listUsers']).use(middleware.auth())
+    router.post('/admin/users', [AdminController, 'createUser']).use(middleware.auth())
     router.patch('/admin/users/:id', [AdminController, 'updateUser']).use(middleware.auth())
     router.delete('/admin/users/:id', [AdminController, 'deleteUser']).use(middleware.auth())
     router.get('/admin/audit-logs', [AdminController, 'auditLogs']).use(middleware.auth())
