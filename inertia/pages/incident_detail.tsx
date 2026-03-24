@@ -1,4 +1,5 @@
 import AppLayout from '../layouts/app_layout'
+import VoiceRecorder from '../components/voice_recorder'
 import { useState } from 'react'
 
 interface IncidentSummary {
@@ -167,6 +168,7 @@ export default function IncidentDetail({ summary, functions, personnel, activity
                 <option value="resource_change">Resource Change</option>
               </select>
               <button onClick={logActivity} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">Log</button>
+              <VoiceRecorder compact incidentId={summary.incident.id} onCapture={() => window.location.reload()} />
             </div>
             <div className="space-y-1">
               {activityLogs.map((l) => (

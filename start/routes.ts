@@ -21,6 +21,7 @@ const WifiController = () => import('#controllers/wifi_controller')
 const AdminController = () => import('#controllers/admin_controller')
 const FeedbackController = () => import('#controllers/feedback_controller')
 const IncidentController = () => import('#controllers/incident_controller')
+const VoiceController = () => import('#controllers/voice_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -97,6 +98,11 @@ router
     router.get('/incidents/:id/aar', [IncidentController, 'aar']).use(middleware.auth())
     router.post('/incidents/:id/functions', [IncidentController, 'createFunction']).use(middleware.auth())
     router.patch('/incidents/functions/:id', [IncidentController, 'updateFunction']).use(middleware.auth())
+
+    // Voice API
+    router.post('/voice/capture', [VoiceController, 'capture']).use(middleware.auth())
+    router.post('/voice/transcribe', [VoiceController, 'transcribe']).use(middleware.auth())
+    router.post('/voice/extract', [VoiceController, 'extract']).use(middleware.auth())
 
     // Admin API (auth required, admin role checked in controller)
     router.get('/admin/users', [AdminController, 'listUsers']).use(middleware.auth())
