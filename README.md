@@ -1,90 +1,120 @@
 # The Attic AI
 
-An AI-first, offline-capable knowledge platform built for edge deployments. Run local LLMs, ingest documents and ZIM archives, search with hybrid vector + graph retrieval, manage Docker services, and communicate over Meshtastic mesh networks — all from a single self-hosted web interface.
+An AI-first, offline-capable knowledge platform built for disaster response, continuity of operations, and edge deployments. Run local LLMs, manage incidents with ICS/BCP playbooks, capture voice logs, sync data via encrypted USB bundles, bridge into TAK networks, and track positions on offline maps — all from a single self-hosted interface that works when the internet doesn't.
 
-## Why
+## Who It's For
 
-Traditional knowledge platforms require constant internet connectivity. The Attic AI is designed for air-gapped, field, and low-bandwidth environments — disaster response, remote education, off-grid research, mesh-connected communities — where local-first AI is a necessity, not a convenience.
+- **Government & Emergency Management** — ICS-compliant incident management with NIMS-standard activity logs, personnel accountability, and PACE communication plans
+- **Enterprise** — Business continuity planning with recovery priority matrices, impact analysis templates, and encrypted data bundles for disaster recovery
+- **Preparedness Communities** — Offline-first knowledge persistence, mesh networking, voice capture, and sneakernet data sync for when infrastructure fails
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  AdonisJS 7 + React 19 + Inertia.js                             │
-│                                                                  │
-│  Chat UI ──▶ AIChatOrchestrator ──▶ OllamaService (local LLM)  │
-│              │  intent classify       │  async mutex             │
-│              │  tool routing          │  model management        │
-│              │  context assembly      │  streaming generation    │
-│              │                        │                          │
-│              ├──▶ RetrievalService    ├──▶ EmbeddingService      │
-│              │    vector + graph RRF  │    nomic-embed-text      │
-│              │                        │    768-dim batched        │
-│              └──▶ ToolRegistry        └──▶ ChunkingService       │
-│                   5 built-in tools         1700-token windows    │
-│                   RBAC enforcement                               │
-│                                                                  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │
-│  │  Ollama  │ │  Qdrant  │ │ FalkorDB │ │  Python Sidecar  │   │
-│  │  :11434  │ │  :6333   │ │  :6380   │ │  FastAPI :8100   │   │
-│  │ qwen2.5  │ │ 768d cos │ │  Cypher  │ │  ZIM extraction  │   │
-│  │ nomic    │ │ + sparse │ │  graphs  │ │  entity extract  │   │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘   │
-│  ┌──────────┐ ┌──────────┐                                      │
-│  │ MySQL 8  │ │ Redis 7  │                                      │
-│  │  :3306   │ │  :6379   │                                      │
-│  └──────────┘ └──────────┘                                      │
-└──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  AdonisJS 7 + React 19 + Inertia.js                                 │
+│                                                                      │
+│  Chat UI ──▶ AIChatOrchestrator ──▶ OllamaService (local LLM)      │
+│              │  intent classify       │  async mutex                 │
+│              │  tool routing          │  model management            │
+│              │  ICS context inject    │  streaming generation        │
+│              │                        │                              │
+│              ├──▶ RetrievalService    ├──▶ EmbeddingService          │
+│              │    vector + graph RRF  │    nomic-embed-text          │
+│              │                        │    768-dim batched            │
+│              ├──▶ ToolRegistry        └──▶ ChunkingService           │
+│              │    10 tools + RBAC         1700-token windows         │
+│              │                                                       │
+│              ├──▶ ICSService          ──▶ VoiceCaptureService        │
+│              │    incident lifecycle       whisper.cpp transcription  │
+│              │    AAR generation           structured extraction      │
+│              │                                                       │
+│              ├──▶ BundleService       ──▶ SyncService                │
+│              │    .attic export/import     Yjs state hashing         │
+│              │    AES-256-GCM encrypt     peer discovery (mDNS)      │
+│              │                                                       │
+│              └──▶ CoTService          ──▶ PositionService            │
+│                   TAK XML bridge          GPS tracking + geofencing   │
+│                                                                      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────────┐   │
+│  │  Ollama  │ │  Qdrant  │ │ FalkorDB │ │    Python Sidecar    │   │
+│  │  :11434  │ │  :6333   │ │  :6380   │ │    FastAPI :8100     │   │
+│  │ qwen2.5  │ │ 768d cos │ │  Cypher  │ │ ZIM + entities +     │   │
+│  │ nomic    │ │ + sparse │ │  graphs  │ │ whisper.cpp (voice)  │   │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────────────────┘   │
+│  ┌──────────┐ ┌──────────┐ ┌────────────────┐                      │
+│  │ MySQL 8  │ │ Redis 7  │ │ OpenTAKServer  │                      │
+│  │  :3306   │ │  :6379   │ │ :8089 CoT TCP  │                      │
+│  └──────────┘ └──────────┘ └────────────────┘                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
 
+### Incident Command System (ICS)
+- Declare, activate, contain, and close incidents with full lifecycle tracking
+- ICS-214 style activity logs (append-only with correction references, never overwrite)
+- Personnel accountability (PAR) with check-in via manual, mesh, or voice
+- Essential function tracking with FEMA priority tiers and recovery time objectives
+- PACE communication trees (Primary/Alternate/Contingency/Emergency)
+- AI-synthesized After-Action Reports from chronological activity logs
+- Active incident context auto-injected into AI chat system prompt
+
+### Business Continuity Planning (BCP)
+- 9 built-in templates: Business Impact Analysis, Recovery Priority Matrix, Communication Cascade, IT Disaster Recovery, and 5 ICS forms
+- Templates stored as structured prompt templates with `ics` and `bcp` categories
+- Recovery time objectives tracked per essential function
+
+### Voice Capture & Structured Extraction
+- Browser-based audio recording (push-to-record, compact and full modes)
+- Offline transcription via whisper.cpp (Metal GPU acceleration on Apple Silicon)
+- LLM-powered extraction: transcript → structured ICS activity log entries
+- Automatic categorization (decision/observation/communication/resource_change)
+- Resource and actor extraction from voice transcripts
+- Graceful fallback when LLM unavailable (raw transcript preserved)
+
+### Data Sync & Sneakernet
+- `.attic` bundle format: single encrypted tar.gz containing MySQL dump, Qdrant snapshot, and Yjs state
+- AES-256-GCM encryption with scrypt key derivation for gov/enterprise compliance
+- CLI commands: `node ace sync:export` and `node ace sync:import` with `--passphrase` flag
+- Web UI for export/import/download bundles
+- Peer discovery via mDNS (`_attic._tcp`) when on shared WiFi
+- State hashing for efficient sync comparison over mesh (fits in 250-byte packets)
+
+### Situational Awareness Map
+- Unified position tracking: mesh nodes, resources, personnel
+- Geofencing with point-in-polygon detection (safe_area, hazard, rally_point, exclusion)
+- Enter/exit alerts on geofence boundary crossings
+- Layer toggles for mesh nodes, resources, personnel, geofences
+- MapLibre GL JS integration point with PMTiles offline base layer support
+- Auto-refresh every 10 seconds
+
+### OpenTAKServer Integration
+- Cursor-on-Target (CoT) XML parsing and generation
+- Position Location Information (PLI) bridge: mesh nodes → TAK clients
+- GeoChat messages → ICS activity log entries
+- Incident declarations published as CoT alert events
+- TCP listener with auto-reconnect and buffer management
+- Docker Compose `tak` profile for one-command TAK server deployment
+
 ### AI Chat with RAG
 - Streaming chat powered by local Ollama models (qwen2.5, llama3, etc.)
-- Hybrid retrieval: dense vectors (768-dim cosine) + sparse vectors + optional knowledge graph
+- Hybrid retrieval: dense vectors (768-dim cosine) + sparse vectors + knowledge graph
 - RRF fusion ranking with source citations
-- Intent classification routes queries to search, tools, or conversation
-- Per-user chat sessions with history
+- Intent classification: question, search, tool, incident_query, chat
+- 10 AI tools with RBAC enforcement (viewer < operator < admin)
 
 ### Knowledge Ingestion
 - Upload PDFs, text, HTML, CSV — extracted and chunked automatically
 - Token-based chunking (1700 tokens, 150 overlap) with heading awareness
-- Batch embedding via nomic-embed-text with `search_document:`/`search_query:` prefixes
-- Optional entity extraction into FalkorDB knowledge graph via Python sidecar
-- ZIM file support (Wikipedia, Wiktionary, etc.) via python-libzim
+- Optional entity extraction into FalkorDB knowledge graph
+- ZIM file support (Wikipedia, Wiktionary, etc.)
 
-### Content Library
-- Curated manifest of downloadable offline content (Wikipedia, OpenStreetMap, etc.)
-- Bandwidth-throttled downloads with progress tracking and cancel support
-- Auto-embed pipeline: download completion triggers RAG ingestion
-
-### AI Tool System
-- 5 built-in tools: `search_knowledge_base`, `install_service`, `download_content`, `system_diagnostics`, `manage_model`
-- RBAC enforcement (viewer < operator < admin)
-- Parameter validation and confirmation gates for destructive actions
-- LLM-powered natural language to tool call extraction
-
-### Docker Service Management
-- Start/stop/restart containers from the web UI
-- Container logs viewer with demuxed stdout/stderr
-- Health status monitoring
-
-### Mesh Networking
+### Mesh Networking & WiFi
 - Meshtastic integration via MQTT for off-grid communication
-- Packet processing: text messages, position updates, telemetry, node info
-- Prompt injection sanitization on mesh messages before embedding
-- AI-powered traffic summaries (per-channel or global)
-- Auto-embed mesh messages into RAG pipeline
-
-### WiFi Access Point
-- hostapd/dnsmasq configuration for creating a local WiFi hotspot
-- Captive portal routing to The Attic AI chat interface
-- WiFi QR code generation for easy client connection
-
-### Auth & RBAC
-- Session-based authentication with scrypt password hashing
-- Three roles: viewer (read-only), operator (actions), admin (full control)
-- First-user setup flow
+- AI-powered mesh traffic summaries
+- WiFi AP with captive portal routing to The Attic AI
+- WiFi QR code generation
 
 ## Tech Stack
 
@@ -95,145 +125,145 @@ Traditional knowledge platforms require constant internet connectivity. The Atti
 | AI Inference | Ollama (local), nomic-embed-text, qwen2.5 |
 | Vector Search | Qdrant (dense 768-dim + sparse, int8 quantization) |
 | Knowledge Graph | FalkorDB (optional, config-gated) |
+| Voice | whisper.cpp (Metal GPU on Apple Silicon), MediaRecorder API |
+| TAK | OpenTAKServer, Cursor-on-Target XML |
+| Sync | Yjs CRDT, .attic bundles, mDNS peer discovery |
 | Job Queue | BullMQ via @rlanz/bull-queue |
 | Database | MySQL 8.0 |
 | Cache/Queue | Redis 7 |
-| Python Sidecar | FastAPI, python-libzim, GraphRAG-SDK |
+| Python Sidecar | FastAPI, python-libzim, whisper.cpp |
 | Containers | Docker Compose with profiles |
 
 ## Quick Start
 
-### Prerequisites
-
-- Docker & Docker Compose
-- Node.js 20+
-- npm
-
-### 1. Clone and install
+### Automated Install
 
 ```bash
 git clone https://github.com/sjonas50/nomad2.0.git
 cd nomad2.0
+./install.sh
+```
+
+The installer auto-detects hardware, recommends models, starts Docker services, runs migrations, and builds the frontend.
+
+### Offline Install (No Internet)
+
+```bash
+# On a connected machine, build the bundle:
+./scripts/build_offline_bundle.sh
+
+# Copy the bundle to a USB drive, then on the target machine:
+./install.sh --offline /path/to/attic-offline-bundle
+```
+
+### Manual Install
+
+```bash
 cp .env.example .env
-# Generate an APP_KEY:
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# Add the output to APP_KEY in .env
+# Generate APP_KEY and add to .env
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 npm install --legacy-peer-deps
-```
 
-### 2. Start infrastructure
-
-```bash
-# Core services (MySQL, Redis, Ollama, Qdrant)
+# Core services
 docker compose up -d
 
-# Full stack (adds FalkorDB + Python sidecar)
+# Full stack (adds FalkorDB + sidecar + whisper)
 docker compose --profile full up -d
-```
 
-### 3. Pull required models
-
-```bash
+# Pull models
 docker exec attic_ollama ollama pull qwen2.5:1.5b
 docker exec attic_ollama ollama pull nomic-embed-text
-```
 
-### 4. Run migrations and start
-
-```bash
+# Migrate and start
 node ace migration:run
 node ace serve --hmr
 ```
 
-Visit `http://localhost:3333` — the first-user setup flow will create your admin account.
+Visit `http://localhost:3333` — the first-user setup flow creates your admin account.
 
 ## Development
 
 ```bash
-# Dev server with HMR
-node ace serve --hmr
-
-# Run tests (86 unit tests)
-node ace test
-
-# Type check
-npm run typecheck
-
-# Lint
-npm run lint
-
-# Format
-npm run format
+node ace serve --hmr          # Dev server with HMR
+node ace test                 # Run all 202 unit tests
+npm run typecheck             # TypeScript check
+npm run lint                  # ESLint
+npm run format                # Prettier
 ```
 
 ## Docker Compose Profiles
 
-| Profile | Services | RAM Required |
-|---------|----------|-------------|
+| Profile | Services | RAM |
+|---------|----------|-----|
 | (default) | MySQL, Redis, Ollama, Qdrant | 8 GB |
 | `--profile graph` | + FalkorDB | 12 GB |
 | `--profile zim` | + Python sidecar | 10 GB |
-| `--profile full` | + FalkorDB + Python sidecar | 16 GB |
+| `--profile tak` | + OpenTAKServer | 12 GB |
+| `--profile full` | + FalkorDB + sidecar + TAK | 16 GB |
+
+## Hardware Tiers (M4 MacBook Pro Optimized)
+
+| RAM | LLM Model | Whisper Model | Profile |
+|-----|-----------|---------------|---------|
+| 16 GB | qwen2.5:7b | base.en | full |
+| 24 GB | qwen2.5:14b | small.en | full |
+| 48 GB+ | qwen2.5:32b | small.en | full |
+
+Apple Silicon Metal GPU acceleration is enabled by default for both Ollama and whisper.cpp.
 
 ## Project Structure
 
 ```
 app/
-├── controllers/     # 8 HTTP controllers
+├── controllers/     # 11 HTTP controllers
 ├── middleware/       # Auth, inertia, security
-├── models/          # 13 Lucid ORM models
-├── services/        # 23 service classes (AI, ingestion, mesh, etc.)
-├── tools/           # 5 built-in AI tools
-└── validators/      # VineJS request validators
+├── models/          # 19 Lucid ORM models
+├── services/        # 30+ service classes
+│   ├── ics_service.ts           # Incident lifecycle, AAR, context blocks
+│   ├── voice_capture_service.ts # Transcription + extraction pipeline
+│   ├── bundle_service.ts        # .attic sneakernet bundles + encryption
+│   ├── sync_service.ts          # State hashing, peer tracking
+│   ├── cot_service.ts           # CoT XML parse/generate
+│   ├── geofence_service.ts      # Point-in-polygon, boundary alerts
+│   └── position_service.ts      # Unified position tracking
+├── tools/           # 10 AI tools (5 core + 5 ICS)
+└── validators/
+
+commands/
+├── sync_export.ts   # node ace sync:export [--passphrase]
+└── sync_import.ts   # node ace sync:import [--passphrase]
 
 inertia/
 ├── layouts/         # App shell layout
-├── pages/           # 6 React pages (chat, knowledge, library, services, mesh, wifi)
-├── components/      # Chat components (message bubble, input, sidebar)
-└── hooks/           # useChat streaming hook
+├── pages/           # 9 React pages
+│   ├── incidents.tsx         # ICS dashboard
+│   ├── incident_detail.tsx   # Tabbed incident view
+│   └── map.tsx               # Situational awareness map
+├── components/
+│   ├── voice_recorder.tsx    # Push-to-record audio capture
+│   └── sync_status.tsx       # Peer discovery + bundle management
+└── hooks/
 
 database/
-└── migrations/      # 13 migration files
+├── migrations/      # 21 migration files
+└── seeders/         # ICS/BCP template seeder (9 templates)
 
-sidecar/             # Python FastAPI service
-├── main.py
-├── extractors/      # ZIM + entity extractors
-└── pyproject.toml
+sidecar/
+├── main.py          # FastAPI: /health, /extract/zim, /extract/entities, /transcribe
+├── extractors/
+│   ├── zim.py       # ZIM article extraction
+│   ├── entities.py  # Named entity extraction
+│   └── whisper.py   # whisper.cpp transcription
+└── Dockerfile       # Includes whisper.cpp build + ffmpeg
+
+scripts/
+├── build_offline_bundle.sh  # Package everything for USB distribution
+└── detect_hardware.sh       # JSON hardware profile + model recommendations
 
 tests/
-└── unit/            # 86 unit tests across 7 spec files
-
-docs/
-├── research.md      # Technology evaluation
-├── architecture.md  # System architecture + data flow diagrams
-└── build-plan.md    # 8-phase build plan
+└── unit/            # 202 unit tests across 11 spec files
 ```
-
-## Environment Variables
-
-See [`.env.example`](.env.example) for all configuration options. Key variables:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `APP_KEY` | Yes | Encryption key (32-byte hex) |
-| `DB_*` | Yes | MySQL connection |
-| `REDIS_HOST` | Yes | Redis for BullMQ |
-| `OLLAMA_HOST` | No | Ollama API URL (default: `http://127.0.0.1:11434`) |
-| `QDRANT_HOST` | No | Qdrant URL (default: `http://127.0.0.1:6333`) |
-| `FALKORDB_ENABLED` | No | Enable knowledge graph (default: `false`) |
-| `MESH_ENABLED` | No | Enable Meshtastic integration (default: `false`) |
-| `MQTT_BROKER` | No | MQTT broker for mesh messages |
-| `ZIM_STORAGE_DIR` | No | Directory for ZIM file storage |
-| `MAP_STORAGE_DIR` | No | Directory for PMTiles map storage |
-
-## Hardware Tiers
-
-| Tier | RAM | What Works |
-|------|-----|-----------|
-| Minimum | 8 GB | Chat + vector RAG, 1.5-3B models |
-| Recommended | 16 GB | Full hybrid RAG with knowledge graph, 7-8B models |
-| Power | 32 GB+ | Multi-model orchestration, 13B+ models |
 
 ## API Endpoints
 
@@ -243,35 +273,61 @@ See [`.env.example`](.env.example) for all configuration options. Key variables:
 | `GET /` | Chat interface |
 | `GET /knowledge` | Knowledge base management |
 | `GET /library` | Content library browser |
+| `GET /incidents` | ICS incident dashboard |
+| `GET /incidents/:id` | Incident detail (tabbed) |
+| `GET /map` | Situational awareness map |
 | `GET /services` | Docker service management |
 | `GET /mesh` | Mesh network message board |
 | `GET /wifi` | WiFi AP configuration |
+| `GET /admin` | Admin dashboard (admin only) |
 
 ### API (JSON)
 | Route | Description |
 |-------|-------------|
 | `POST /api/chat` | Stream chat response (ndjson) |
-| `GET /api/sessions` | List chat sessions |
-| `POST /api/knowledge/upload` | Upload document |
-| `POST /api/library/download` | Start content download |
-| `POST /api/services/:id/start` | Start Docker container |
-| `GET /api/mesh/messages` | Get mesh messages |
-| `GET /api/mesh/summary` | AI summary of mesh traffic |
-| `POST /api/wifi/start` | Start WiFi AP |
+| `POST /api/incidents` | Declare incident |
+| `PATCH /api/incidents/:id/status` | Update incident status |
+| `POST /api/incidents/:id/activity` | Log activity entry |
+| `POST /api/incidents/:id/check-in` | Personnel check-in |
+| `GET /api/incidents/:id/summary` | Incident summary |
+| `GET /api/incidents/:id/aar` | After-action report data |
+| `POST /api/voice/capture` | Record → transcribe → extract → log |
+| `POST /api/voice/transcribe` | Transcribe only |
+| `POST /api/voice/extract` | Extract structured data from text |
+| `POST /api/sync/export` | Export .attic bundle |
+| `POST /api/sync/import` | Import .attic bundle |
+| `GET /api/sync/status` | Sync status + state hash |
+| `GET /api/sync/peers` | Discover local peers |
+| `GET /api/map/markers` | All position markers |
+| `GET /api/map/geofences` | Active geofences |
+| `POST /api/map/geofences` | Create geofence |
 | `GET /api/health` | Health check |
 
 ## Build Phases
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| 0 | Complete | Scaffold, Docker Compose, auth, streaming POC |
-| 1 | Complete | AI chat, RAG pipeline, chat UI |
-| 2 | Complete | Knowledge ingestion, graph RAG, Python sidecar |
-| 3 | Complete | Content services, ZIM, maps, Docker management |
-| 4 | Complete | Tool registry, AI workflows, onboarding |
-| 5 | Complete | WiFi AP, mesh networking, communication |
-| 6 | Planned | Security hardening, audit logging, quality metrics |
-| 7 | Planned | Install scripts, performance, migration tooling |
+| 0–7 | Complete | Core platform (auth, chat, RAG, knowledge, mesh, WiFi, services, security) |
+| 8 | Complete | ICS & BCP data model, playbooks, AI tools, communication trees |
+| 9 | Complete | Voice capture, whisper.cpp transcription, structured extraction |
+| 10 | Complete | Data sync, sneakernet bundles, peer discovery |
+| 11 | Complete | Situational awareness map, geofencing, position tracking |
+| 12 | Complete | OpenTAKServer integration, CoT bridge |
+| 13 | Complete | Packaging, offline install, encrypted bundles, hardware auto-config |
+
+## Environment Variables
+
+See [`.env.example`](.env.example) for all options. Key additions for COOP features:
+
+| Variable | Description |
+|----------|-------------|
+| `NODE_ID` | Unique identifier for this Attic instance (auto-generated) |
+| `BUNDLE_DIR` | Directory for .attic sneakernet bundles |
+| `TAK_COT_HOST` | OpenTAKServer CoT TCP host |
+| `TAK_COT_PORT` | OpenTAKServer CoT TCP port (default: 8089) |
+| `TAK_ENABLED` | Enable TAK integration |
+| `WHISPER_MODEL` | Whisper model name (default: base.en) |
+| `SIDECAR_URL` | Python sidecar URL |
 
 ## License
 
