@@ -93,13 +93,62 @@ export default function AdminDashboard({
   modelRoles: initialRoles = [],
 }: Props) {
   const [users, setUsers] = useState(initialUsers)
-  const [tab, setTab] = useState<'health' | 'users' | 'models' | 'logs' | 'backups'>('health')
+  const [tab, setTab] = useState<'health' | 'users' | 'services' | 'models' | 'logs' | 'backups'>('health')
   const [backups, setBackups] = useState<Array<{ filename: string; sizeBytes: number; type: string; createdAt: string }>>([])
   const [backupLoading, setBackupLoading] = useState(false)
   const [showAddUser, setShowAddUser] = useState(false)
   const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '', role: 'viewer' })
   const [addUserError, setAddUserError] = useState('')
   const [addUserLoading, setAddUserLoading] = useState(false)
+
+  // Optional service toggle state
+  const [togglingService, setTogglingService] = useState<string | null>(null)
+
+  const OPTIONAL_SERVICES = [
+    {
+      id: 'falkordb',
+      label: 'FalkorDB (Knowledge Graph)',
+      description: 'Entity relationship extraction and graph-based retrieval. Improves AI answers by understanding connections between concepts. Recommended for 16GB+ RAM.',
+      ram: '~2 GB',
+    },
+    {
+      id: 'sidecar',
+      label: 'Python Sidecar',
+      description: 'Enables ZIM file reading (Wikipedia, etc.), entity extraction for the knowledge graph, and voice transcription via whisper.cpp.',
+      ram: '~500 MB',
+    },
+    {
+      id: 'opentakserver',
+      label: 'TAK Server (ATAK/iTAK)',
+      description: 'CoT (Cursor on Target) bridge for ATAK and iTAK interoperability. Enables position tracking and GeoChat with tactical radios.',
+      ram: '~300 MB',
+    },
+  ]
+
+  const getServiceStatus = (serviceId: string): 'up' | 'down' | 'unknown' => {
+    const nameMap: Record<string, string> = {
+      falkordb: 'falkordb',
+      sidecar: 'sidecar',
+      opentakserver: 'opentakserver',
+    }
+    const svc = health.services.find((s) => s.name === nameMap[serviceId])
+    if (!svc) return 'unknown'
+    return svc.status === 'up' ? 'up' : 'down'
+  }
+
+  const toggleService = async (serviceId: string, enable: boolean) => {
+    setTogglingService(serviceId)
+    try {
+      await apiFetch('/api/onboarding/toggle-service', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service: serviceId, enable }),
+      })
+      // Reload page to refresh health status
+      window.location.reload()
+    } catch { /* */ }
+    setTogglingService(null)
+  }
 
   // Model management state
   const [installedModels, setInstalledModels] = useState<string[]>(initialModels)
@@ -255,7 +304,7 @@ export default function AdminDashboard({
 
         {/* Tabs */}
         <div className="flex gap-4 mb-6 border-b border-zinc-700">
-          {(['health', 'users', 'models', 'logs', 'backups'] as const).map((t) => (
+          {(['health', 'users', 'services', 'models', 'logs', 'backups'] as const).map((t) => (
             <button
               key={t}
               onClick={() => { setTab(t); if (t === 'backups') loadBackups() }}
@@ -278,7 +327,8 @@ export default function AdminDashboard({
 
             <div className="grid gap-3 md:grid-cols-2">
               {health.services.map((s) => {
-                const isOptionalDisabled = s.status === 'down' && (s.message === 'Not enabled' || s.message === 'Disabled by config')
+                const optionalNames = ['falkordb', 'sidecar', 'opentakserver']
+                const isOptionalDisabled = s.status === 'down' && optionalNames.includes(s.name)
                 const dotColor = isOptionalDisabled ? 'bg-zinc-600' : STATUS_COLORS[s.status]
                 return (
                   <div key={s.name} className={`p-3 rounded-lg border ${isOptionalDisabled ? 'bg-zinc-800/50 border-zinc-800' : 'bg-zinc-800 border-zinc-700'}`}>
@@ -405,6 +455,57 @@ export default function AdminDashboard({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Services */}
+        {tab === 'services' && (
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-400">
+              Enable or disable optional services. Core services (MySQL, Redis, Ollama, Qdrant) are always running.
+            </p>
+
+            {OPTIONAL_SERVICES.map((svc) => {
+              const status = getServiceStatus(svc.id)
+              const isRunning = status === 'up'
+              const isToggling = togglingService === svc.id
+
+              return (
+                <div
+                  key={svc.id}
+                  className={`p-4 rounded-xl border transition-colors ${
+                    isRunning
+                      ? 'bg-green-500/5 border-green-500/20'
+                      : 'bg-zinc-800 border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isRunning ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                        <span className="text-white font-medium">{svc.label}</span>
+                        <span className={`text-xs ${isRunning ? 'text-green-400' : 'text-zinc-500'}`}>
+                          {isRunning ? 'Running' : 'Stopped'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-zinc-400 mt-1.5 ml-4">{svc.description}</p>
+                      <p className="text-xs text-zinc-600 mt-1 ml-4">Memory usage: {svc.ram}</p>
+                    </div>
+                    <button
+                      onClick={() => toggleService(svc.id, !isRunning)}
+                      disabled={isToggling}
+                      className={`shrink-0 ml-4 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                        isRunning
+                          ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                          : 'bg-brand-500 text-white hover:bg-brand-600'
+                      }`}
+                    >
+                      {isToggling ? 'Working...' : isRunning ? 'Disable' : 'Enable'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 

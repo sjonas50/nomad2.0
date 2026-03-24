@@ -9,7 +9,7 @@ import logger from '@adonisjs/core/services/logger'
 const execFileAsync = promisify(execFile)
 
 const REQUIRED_SERVICES = ['ollama', 'qdrant', 'redis']
-const OPTIONAL_SERVICES = ['falkordb', 'sidecar']
+const OPTIONAL_SERVICES = ['falkordb', 'sidecar', 'opentakserver']
 
 const SERVICE_PROFILES: Record<string, { profiles: string[]; container: string; description: string }> = {
   falkordb: {
@@ -21,6 +21,11 @@ const SERVICE_PROFILES: Record<string, { profiles: string[]; container: string; 
     profiles: ['full', 'zim'],
     container: 'attic_sidecar',
     description: 'Python service for ZIM extraction, entity extraction, and voice transcription',
+  },
+  opentakserver: {
+    profiles: ['full', 'tak'],
+    container: 'attic_tak',
+    description: 'CoT bridge for ATAK/iTAK interoperability',
   },
 }
 

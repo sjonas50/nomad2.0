@@ -31,6 +31,7 @@ export default class HealthService {
       this.checkFalkorDB(),
       this.checkSidecar(),
       this.checkRedis(),
+      this.checkTAK(),
     ])
 
     const ollamaUp = services.find((s) => s.name === 'ollama')?.status === 'up'
@@ -47,9 +48,10 @@ export default class HealthService {
       entityExtraction: sidecarUp && ollamaUp,
     }
 
-    // Only count required services (not optional disabled ones) toward overall health
+    // Only count required services (not optional ones) toward overall health
+    const optionalNames = ['falkordb', 'sidecar', 'opentakserver']
     const optionalDisabled = services.filter(
-      (s) => s.status === 'down' && s.message === 'Not enabled' || s.message === 'Disabled by config'
+      (s) => s.status === 'down' && optionalNames.includes(s.name)
     )
     const requiredDown = services.filter(
       (s) => s.status === 'down' && !optionalDisabled.includes(s)
@@ -100,24 +102,32 @@ export default class HealthService {
   }
 
   private async checkFalkorDB(): Promise<ServiceHealth> {
-    const enabled = process.env.FALKORDB_ENABLED === 'true'
-    if (!enabled) {
-      return { name: 'falkordb', status: 'down', message: 'Disabled by config' }
-    }
-    // FalkorDB runs on Redis protocol — use HTTP ping via qdrant pattern is not possible
-    // Just check if the host is reachable via a TCP connect
+    // Always try to connect — the service may have been toggled on from the admin UI
     const host = process.env.FALKORDB_HOST || '127.0.0.1'
     const port = Number(process.env.FALKORDB_PORT) || 6380
-    return this.tcpCheck('falkordb', host, port)
+    const result = await this.tcpCheck('falkordb', host, port)
+    if (result.status === 'down') {
+      result.message = 'Not running'
+    }
+    return result
   }
 
   private async checkSidecar(): Promise<ServiceHealth> {
-    const enabled = process.env.SIDECAR_ENABLED === 'true'
-    if (!enabled) {
-      return { name: 'sidecar', status: 'down', message: 'Not enabled' }
-    }
+    // Always try to connect — the service may have been toggled on from the admin UI
     const url = process.env.SIDECAR_URL || 'http://127.0.0.1:8100'
-    return this.httpCheck('sidecar', `${url}/health`)
+    const result = await this.httpCheck('sidecar', `${url}/health`)
+    if (result.status === 'down') {
+      result.message = 'Not running'
+    }
+    return result
+  }
+
+  private async checkTAK(): Promise<ServiceHealth> {
+    const result = await this.tcpCheck('opentakserver', '127.0.0.1', 8080)
+    if (result.status === 'down') {
+      result.message = 'Not running'
+    }
+    return result
   }
 
   private async checkRedis(): Promise<ServiceHealth> {
