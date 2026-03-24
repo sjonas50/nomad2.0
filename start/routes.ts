@@ -23,6 +23,7 @@ const FeedbackController = () => import('#controllers/feedback_controller')
 const IncidentController = () => import('#controllers/incident_controller')
 const VoiceController = () => import('#controllers/voice_controller')
 const SyncController = () => import('#controllers/sync_controller')
+const MapController = () => import('#controllers/map_controller')
 
 // Auth routes
 router.get('/login', [AuthController, 'show']).use(middleware.guest()).as('auth.login')
@@ -43,6 +44,7 @@ router
     router.get('/admin', [AdminController, 'index']).as('admin')
     router.get('/incidents', [IncidentController, 'index']).as('incidents')
     router.get('/incidents/:id', [IncidentController, 'show']).as('incidents.show')
+    router.get('/map', [MapController, 'index']).as('map')
   })
   .use(middleware.auth())
 
@@ -104,6 +106,12 @@ router
     router.post('/voice/capture', [VoiceController, 'capture']).use(middleware.auth())
     router.post('/voice/transcribe', [VoiceController, 'transcribe']).use(middleware.auth())
     router.post('/voice/extract', [VoiceController, 'extract']).use(middleware.auth())
+
+    // Map & Position API
+    router.get('/map/markers', [MapController, 'markers']).use(middleware.auth())
+    router.get('/map/geofences', [MapController, 'geofences']).use(middleware.auth())
+    router.post('/map/geofences', [MapController, 'createGeofence']).use(middleware.auth())
+    router.post('/map/position', [MapController, 'updatePosition']).use(middleware.auth())
 
     // Sync & Sneakernet API
     router.get('/sync/status', [SyncController, 'status']).use(middleware.auth())

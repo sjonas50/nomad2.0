@@ -43,6 +43,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 Incidents
               </Link>
               <Link
+                href="/map"
+                className="text-gray-400 transition-colors hover:text-white"
+              >
+                Map
+              </Link>
+              <Link
                 href="/services"
                 className="text-gray-400 transition-colors hover:text-white"
               >
