@@ -81,6 +81,12 @@ router
     router.post('/services/:id/restart', [ServicesController, 'restart']).use(middleware.auth())
     router.get('/services/:id/logs', [ServicesController, 'logs']).use(middleware.auth())
 
+    // Model management API
+    router.get('/models', [ServicesController, 'listModels']).use(middleware.auth())
+    router.post('/models/pull', [ServicesController, 'pullModel']).use(middleware.auth())
+    router.delete('/models/:name', [ServicesController, 'deleteModel']).use(middleware.auth())
+    router.post('/models/assign', [ServicesController, 'assignRole']).use(middleware.auth())
+
     // Mesh API
     router.get('/mesh/messages', [MeshController, 'messages']).use(middleware.auth())
     router.get('/mesh/nodes', [MeshController, 'nodes']).use(middleware.auth())
