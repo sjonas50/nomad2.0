@@ -141,6 +141,7 @@ router
     router.get('/onboarding/status', [OnboardingController, 'status']).use(middleware.auth())
     router.post('/onboarding/pull-model', [OnboardingController, 'pullModel']).use(middleware.auth())
     router.post('/onboarding/dismiss', [OnboardingController, 'dismiss']).use(middleware.auth())
+    router.post('/onboarding/toggle-service', [OnboardingController, 'toggleService']).use(middleware.auth())
 
     // Admin API (auth required, admin role checked in controller)
     router.get('/admin/users', [AdminController, 'listUsers']).use(middleware.auth())

@@ -1,10 +1,28 @@
 import type { HttpContext } from '@adonisjs/core/http'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import HealthService from '#services/health_service'
 import OllamaService from '#services/ollama_service'
 import KnowledgeSource from '#models/knowledge_source'
+import logger from '@adonisjs/core/services/logger'
+
+const execFileAsync = promisify(execFile)
 
 const REQUIRED_SERVICES = ['ollama', 'qdrant', 'redis']
 const OPTIONAL_SERVICES = ['falkordb', 'sidecar']
+
+const SERVICE_PROFILES: Record<string, { profiles: string[]; container: string; description: string }> = {
+  falkordb: {
+    profiles: ['full', 'graph'],
+    container: 'attic_falkordb',
+    description: 'Knowledge graph database for entity relationships (16GB+ RAM recommended)',
+  },
+  sidecar: {
+    profiles: ['full', 'zim'],
+    container: 'attic_sidecar',
+    description: 'Python service for ZIM extraction, entity extraction, and voice transcription',
+  },
+}
 
 export default class OnboardingController {
   /**
@@ -146,6 +164,97 @@ export default class OnboardingController {
     }
 
     response.response.end()
+  }
+
+  /**
+   * API: enable/disable an optional service (start/stop Docker container)
+   */
+  async toggleService({ request, response }: HttpContext) {
+    const { service, enable } = request.only(['service', 'enable'])
+
+    if (!service || typeof service !== 'string') {
+      return response.badRequest({ error: 'Service name required' })
+    }
+
+    const config = SERVICE_PROFILES[service]
+    if (!config) {
+      return response.badRequest({ error: `Unknown optional service: ${service}` })
+    }
+
+    try {
+      if (enable) {
+        // Try to start the service using its profile
+        const profile = config.profiles[0]
+        logger.info({ service, profile }, 'Starting optional service')
+
+        // Try production compose first, fall back to dev compose
+        const composeFiles = ['docker-compose.yml', 'docker-compose.prod.yml']
+        let started = false
+
+        for (const file of composeFiles) {
+          try {
+            await execFileAsync('docker', [
+              'compose', '-f', file,
+              '--profile', profile,
+              'up', '-d', service,
+            ], { timeout: 60_000 })
+            started = true
+            break
+          } catch {
+            // Try next compose file
+          }
+        }
+
+        if (!started) {
+          return response.unprocessableEntity({
+            error: `Could not start ${service}. Make sure Docker is running and the compose file is available.`,
+            hint: `Run manually: docker compose --profile ${profile} up -d ${service}`,
+          })
+        }
+
+        // Wait for container to be healthy (up to 30s)
+        let healthy = false
+        for (let i = 0; i < 15; i++) {
+          await new Promise((r) => setTimeout(r, 2000))
+          try {
+            const { stdout } = await execFileAsync('docker', [
+              'inspect', '--format', '{{.State.Health.Status}}', config.container,
+            ])
+            if (stdout.trim() === 'healthy') {
+              healthy = true
+              break
+            }
+          } catch {
+            // Container may not exist yet
+          }
+        }
+
+        return response.ok({
+          service,
+          enabled: true,
+          healthy,
+          message: healthy
+            ? `${service} is running and healthy`
+            : `${service} started but may still be initializing`,
+        })
+      } else {
+        // Stop the service
+        logger.info({ service }, 'Stopping optional service')
+        try {
+          await execFileAsync('docker', ['stop', config.container], { timeout: 30_000 })
+          await execFileAsync('docker', ['rm', config.container], { timeout: 10_000 })
+        } catch {
+          // Container may not exist
+        }
+
+        return response.ok({ service, enabled: false, message: `${service} stopped` })
+      }
+    } catch (err) {
+      logger.error({ err, service }, 'Failed to toggle optional service')
+      return response.internalServerError({
+        error: `Failed to ${enable ? 'start' : 'stop'} ${service}`,
+      })
+    }
   }
 
   /**

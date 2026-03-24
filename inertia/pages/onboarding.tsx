@@ -42,6 +42,7 @@ export default function Onboarding() {
   const [textTitle, setTextTitle] = useState('')
   const [textContent, setTextContent] = useState('')
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+  const [togglingService, setTogglingService] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchStatus = useCallback(async () => {
@@ -107,6 +108,34 @@ export default function Onboarding() {
 
     setPulling(null)
     fetchStatus()
+  }
+
+  const toggleService = async (serviceName: string, enable: boolean) => {
+    setTogglingService(serviceName)
+    setMessage(null)
+    try {
+      const res = await apiFetch('/api/onboarding/toggle-service', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service: serviceName, enable }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setMessage({
+          text: data.message || `${serviceName} ${enable ? 'enabled' : 'disabled'}`,
+          type: 'success',
+        })
+        setTimeout(fetchStatus, 1000)
+      } else {
+        setMessage({
+          text: data.error || `Failed to ${enable ? 'start' : 'stop'} ${serviceName}`,
+          type: 'error',
+        })
+      }
+    } catch {
+      setMessage({ text: `Failed to toggle ${serviceName}`, type: 'error' })
+    }
+    setTogglingService(null)
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -208,7 +237,7 @@ export default function Onboarding() {
         {status && (
           <div className="space-y-3">
             {/* Step 1: Services */}
-            {renderServicesStep(status.steps.find((s) => s.id === 'services')!, currentStepIndex === 0)}
+            {renderServicesStep(status.steps.find((s) => s.id === 'services')!, currentStepIndex === 0, togglingService, toggleService)}
 
             {/* Step 2: Embedding Model */}
             {renderModelStep(
@@ -269,7 +298,25 @@ export default function Onboarding() {
 
 /* ---- Step Renderers ---- */
 
-function renderServicesStep(step: OnboardingStep, isCurrent: boolean) {
+const OPTIONAL_SERVICE_INFO: Record<string, { label: string; description: string; icon: string }> = {
+  falkordb: {
+    label: 'FalkorDB (Knowledge Graph)',
+    description: 'Enables entity relationship extraction and graph-based retrieval. Recommended for 16GB+ RAM.',
+    icon: '🔗',
+  },
+  sidecar: {
+    label: 'Python Sidecar',
+    description: 'Enables ZIM file reading (Wikipedia, etc.), entity extraction, and voice transcription via whisper.cpp.',
+    icon: '🐍',
+  },
+}
+
+function renderServicesStep(
+  step: OnboardingStep,
+  isCurrent: boolean,
+  togglingService: string | null,
+  onToggle: (service: string, enable: boolean) => void
+) {
   const isComplete = step.status === 'complete'
   return (
     <StepCard step={step} number={1} isCurrent={isCurrent}>
@@ -290,16 +337,48 @@ function renderServicesStep(step: OnboardingStep, isCurrent: boolean) {
         ))}
       </div>
 
-      {/* Optional services — collapsed, not alarming */}
+      {/* Optional services — toggle controls */}
       {step.optionalServices && step.optionalServices.length > 0 && (
-        <div className="mt-3 text-xs text-zinc-600">
-          <span className="font-medium text-zinc-500">Optional: </span>
-          {step.optionalServices.map((s) => (
-            <span key={s.name} className="capitalize">
-              {s.name} ({s.status === 'up' ? 'running' : 'not running'})
-              {s !== step.optionalServices![step.optionalServices!.length - 1] ? ', ' : ''}
-            </span>
-          ))}
+        <div className="mt-4 space-y-2">
+          <h4 className="text-xs font-medium text-zinc-500 uppercase">Optional Services</h4>
+          {step.optionalServices.map((svc) => {
+            const info = OPTIONAL_SERVICE_INFO[svc.name]
+            const isUp = svc.status === 'up'
+            const isToggling = togglingService === svc.name
+            return (
+              <div
+                key={svc.name}
+                className={`flex items-start gap-3 rounded-lg px-3 py-3 border transition-colors ${
+                  isUp
+                    ? 'bg-green-500/5 border-green-500/15'
+                    : 'bg-surface-900 border-zinc-800'
+                }`}
+              >
+                <span className="text-lg mt-0.5">{info?.icon || '⚙️'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-sm font-medium ${isUp ? 'text-green-400' : 'text-zinc-300'}`}>
+                      {info?.label || svc.name}
+                    </span>
+                    <button
+                      onClick={() => onToggle(svc.name, !isUp)}
+                      disabled={isToggling}
+                      className={`shrink-0 text-xs px-3 py-1 rounded-lg font-medium transition-colors ${
+                        isToggling
+                          ? 'bg-zinc-700 text-zinc-400 cursor-wait'
+                          : isUp
+                            ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                            : 'bg-brand-500 text-white hover:bg-brand-600'
+                      }`}
+                    >
+                      {isToggling ? 'Working...' : isUp ? 'Disable' : 'Enable'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-0.5">{info?.description || ''}</p>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
