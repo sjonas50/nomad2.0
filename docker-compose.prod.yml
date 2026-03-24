@@ -1,0 +1,170 @@
+# The Attic AI — Production Docker Compose (for distribution)
+# All images are pre-loaded via `docker load` from the bundle tarball.
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: attic_mysql
+    restart: unless-stopped
+    ports:
+      - '3306:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-attic_root}
+      MYSQL_DATABASE: ${DB_DATABASE:-attic}
+      MYSQL_USER: ${DB_USER:-attic}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-attic_password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command:
+      - --innodb-buffer-pool-size=256M
+      - --max-connections=50
+      - --innodb-log-file-size=64M
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: attic_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --save 60 1000
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: attic_ollama
+    restart: unless-stopped
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:11434/api/tags']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    container_name: attic_qdrant
+    restart: unless-stopped
+    ports:
+      - '6333:6333'
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: '6334'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:6333/collections']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  admin:
+    image: attic-admin:latest
+    container_name: attic_admin
+    restart: unless-stopped
+    ports:
+      - '3333:3333'
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3333
+      DB_HOST: mysql
+      DB_PORT: 3306
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_REDIS_HOST: redis
+      QUEUE_REDIS_PORT: 6379
+      OLLAMA_HOST: http://ollama:11434
+      QDRANT_HOST: http://qdrant:6333
+      SESSION_DRIVER: cookie
+    volumes:
+      - app_storage:/app/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3333/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Optional: starts with --profile full or --profile graph
+  falkordb:
+    image: falkordb/falkordb-server:latest
+    container_name: attic_falkordb
+    restart: unless-stopped
+    profiles: ['full', 'graph']
+    ports:
+      - '6380:6379'
+    volumes:
+      - falkordb_data:/data
+    environment:
+      REDIS_ARGS: '--maxmemory 2gb --maxmemory-policy noeviction --save 60 1'
+    deploy:
+      resources:
+        limits:
+          memory: 2.5G
+          cpus: '2'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: starts with --profile full or --profile zim
+  sidecar:
+    image: attic-sidecar:latest
+    container_name: attic_sidecar
+    restart: unless-stopped
+    profiles: ['full', 'zim']
+    ports:
+      - '8100:8100'
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: 6379
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8100/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_data:
+  redis_data:
+  ollama_data:
+  qdrant_data:
+  falkordb_data:
+  app_storage:

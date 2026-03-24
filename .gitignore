@@ -29,5 +29,8 @@ storage/maps/
 storage/zim/
 storage/docs/
 
+# Distribution bundles
+dist/
+
 # Platform specific
 .DS_Store

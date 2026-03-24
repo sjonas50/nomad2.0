@@ -86,7 +86,9 @@ An AI-first, offline-capable knowledge platform built for disaster response, con
 - Geofencing with point-in-polygon detection (safe_area, hazard, rally_point, exclusion)
 - Enter/exit alerts on geofence boundary crossings
 - Layer toggles for mesh nodes, resources, personnel, geofences
-- MapLibre GL JS integration point with PMTiles offline base layer support
+- MapLibre GL JS with OSM online tiles and PMTiles offline vector tiles
+- One-click offline map downloads: 50 US states, 10 FEMA regions, territories, CONUS
+- Auto-downloads go-pmtiles CLI and extracts street-level (z14) tiles from Protomaps planet build
 - Auto-refresh every 10 seconds
 
 ### OpenTAKServer Integration
@@ -136,44 +138,51 @@ An AI-first, offline-capable knowledge platform built for disaster response, con
 
 ## Quick Start
 
-### Automated Install
+### Install from Bundle (Recommended — No Git Required)
+
+The easiest way to run The Attic AI. Only prerequisite: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+1. Download the latest `attic-ai-vX.Y.Z-arm64.zip` from Releases
+2. Unzip it
+3. Double-click **`install.command`**
+
+The installer loads all Docker images, sets up the database, detects your hardware, pulls the right AI models, and starts everything. When it's done, open **http://localhost:3333**.
+
+To remove everything: double-click **`uninstall.command`**.
+
+### Build the Bundle (For Distributors)
 
 ```bash
 git clone https://github.com/sjonas50/nomad2.0.git
 cd nomad2.0
-./install.sh
+./scripts/bundle.sh
 ```
 
-The installer auto-detects hardware, recommends models, starts Docker services, runs migrations, and builds the frontend.
+This produces `dist/attic-ai-vX.Y.Z-arm64.zip` (~8-15 GB depending on models) containing:
+- All Docker images (pre-built, no compilation needed)
+- Pre-pulled Ollama models (embedding + chat)
+- Production Docker Compose config
+- One-click install/uninstall scripts
 
-### Offline Install (No Internet)
+Copy the zip to a USB drive for air-gapped deployment.
 
-```bash
-# On a connected machine, build the bundle:
-./scripts/build_offline_bundle.sh
-
-# Copy the bundle to a USB drive, then on the target machine:
-./install.sh --offline /path/to/attic-offline-bundle
-```
-
-### Manual Install
+### Developer Install
 
 ```bash
+git clone https://github.com/sjonas50/nomad2.0.git
+cd nomad2.0
 cp .env.example .env
 # Generate APP_KEY and add to .env
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 npm install --legacy-peer-deps
 
-# Core services
+# Start infrastructure services
 docker compose up -d
 
-# Full stack (adds FalkorDB + sidecar + whisper)
-docker compose --profile full up -d
-
-# Pull models
-docker exec attic_ollama ollama pull qwen2.5:1.5b
+# Pull AI models
 docker exec attic_ollama ollama pull nomic-embed-text
+docker exec attic_ollama ollama pull qwen2.5:7b
 
 # Migrate and start
 node ace migration:run
@@ -258,8 +267,13 @@ sidecar/
 └── Dockerfile       # Includes whisper.cpp build + ffmpeg
 
 scripts/
-├── build_offline_bundle.sh  # Package everything for USB distribution
-└── detect_hardware.sh       # JSON hardware profile + model recommendations
+├── bundle.sh               # Build distributable zip for end users
+├── build_offline_bundle.sh # Legacy offline bundle builder
+└── detect_hardware.sh      # JSON hardware profile + model recommendations
+
+install.command              # macOS double-click installer (for end users)
+uninstall.command            # macOS double-click uninstaller
+docker-compose.prod.yml     # Production compose (pre-built images, no build:)
 
 tests/
 └── unit/            # 202 unit tests across 11 spec files
@@ -301,7 +315,13 @@ tests/
 | `GET /api/map/markers` | All position markers |
 | `GET /api/map/geofences` | Active geofences |
 | `POST /api/map/geofences` | Create geofence |
-| `GET /api/health` | Health check |
+| `GET /api/map/regions` | List map regions with download status |
+| `POST /api/map/extract` | Start offline map extraction |
+| `GET /api/map/extract/:regionId` | Check extraction progress |
+| `DELETE /api/map/regions/:regionId` | Delete downloaded region |
+| `POST /api/map/tiles/upload` | Upload PMTiles file |
+| `GET /api/map/tiles/:filename` | Serve PMTiles with Range Requests |
+| `GET /health` | Health check |
 
 ## Build Phases
 
