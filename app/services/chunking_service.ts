@@ -1,6 +1,10 @@
-const DEFAULT_CHUNK_SIZE = 1700
-const DEFAULT_OVERLAP = 150
-const CHARS_PER_TOKEN = 4
+/**
+ * Target ~1200 tokens per chunk. At 3 chars/token → 3600 chars.
+ * Leaves headroom under the 4000-char embedding ceiling.
+ */
+const DEFAULT_CHUNK_SIZE = 1200
+const DEFAULT_OVERLAP = 100
+const CHARS_PER_TOKEN = 3
 
 interface Chunk {
   text: string

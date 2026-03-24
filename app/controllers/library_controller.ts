@@ -1,7 +1,10 @@
 import type { HttpContext } from '@adonisjs/core/http'
+import { createReadStream, statSync } from 'node:fs'
 import CollectionManifestService from '#services/collection_manifest_service'
 import InstalledResource from '#models/installed_resource'
+import KnowledgeSource from '#models/knowledge_source'
 import DownloadService from '#services/download_service'
+import IngestionService from '#services/ingestion_service'
 import { randomUUID } from 'node:crypto'
 import env from '#start/env'
 import SecurityMiddleware from '#middleware/security_middleware'
@@ -50,6 +53,8 @@ export default class LibraryController {
         status: r.status,
         fileSize: r.fileSize,
         ragEnabled: r.ragEnabled,
+        knowledgeSourceId: r.knowledgeSourceId,
+        filePath: r.filePath,
       })),
     })
   }
@@ -111,6 +116,13 @@ export default class LibraryController {
         resource.status = 'installed'
         await resource.save()
         logger.info({ resourceId: resource.id, filePath: result.filePath }, 'Download installed')
+
+        // Auto-ingest PDFs into RAG
+        if (type === 'pdf') {
+          this.autoIngest(resource).catch((err) => {
+            logger.error({ resourceId: resource.id, error: err.message }, 'Auto-ingest failed')
+          })
+        }
       })
       .catch(async (error) => {
         resource.status = 'failed'
@@ -125,6 +137,150 @@ export default class LibraryController {
       name: resource.name,
       status: resource.status,
     })
+  }
+
+  /**
+   * Manually trigger RAG ingestion for an installed resource.
+   * POST /api/library/:id/ingest
+   */
+  async ingest({ params, response }: HttpContext) {
+    const resource = await InstalledResource.findOrFail(params.id)
+
+    if (!resource.filePath) {
+      return response.badRequest({ error: 'Resource has no file path — still downloading?' })
+    }
+
+    if (resource.status === 'embedding') {
+      return response.conflict({ error: 'Ingestion already in progress' })
+    }
+
+    // Clean up any previous failed KnowledgeSource so we don't create duplicates
+    if (resource.knowledgeSourceId) {
+      try {
+        const oldKs = await KnowledgeSource.find(resource.knowledgeSourceId)
+        if (oldKs && oldKs.status === 'failed') {
+          await oldKs.delete()
+          resource.knowledgeSourceId = null
+          resource.ragEnabled = false
+          resource.errorMessage = null
+          await resource.save()
+        }
+      } catch { /* safe to ignore */ }
+    }
+
+    // Start ingestion in background
+    this.autoIngest(resource).catch((err) => {
+      logger.error({ resourceId: resource.id, error: err.message }, 'Manual ingest failed')
+    })
+
+    return response.ok({ status: 'ingesting', resourceId: resource.id })
+  }
+
+  /**
+   * Serve a PDF file for viewing.
+   * GET /api/library/:id/read
+   */
+  async read({ params, response }: HttpContext) {
+    const resource = await InstalledResource.findOrFail(params.id)
+
+    if (!resource.filePath) {
+      return response.notFound({ error: 'File not available' })
+    }
+
+    if (resource.resourceType === 'pdf') {
+      try {
+        const stats = statSync(resource.filePath)
+        response.header('Content-Type', 'application/pdf')
+        response.header('Content-Length', String(stats.size))
+        response.header('Content-Disposition', `inline; filename="${resource.name}.pdf"`)
+        const stream = createReadStream(resource.filePath)
+        response.stream(stream)
+      } catch {
+        return response.notFound({ error: 'File not found on disk' })
+      }
+      return
+    }
+
+    return response.badRequest({ error: `Content viewing not supported for type: ${resource.resourceType}` })
+  }
+
+  /**
+   * Search articles within a ZIM file via sidecar.
+   * GET /api/library/:id/zim/search?q=term
+   */
+  async zimSearch({ params, request, response }: HttpContext) {
+    const resource = await InstalledResource.findOrFail(params.id)
+
+    if (resource.resourceType !== 'zim' || !resource.filePath) {
+      return response.badRequest({ error: 'Not a ZIM resource or file not available' })
+    }
+
+    const query = request.qs().q || ''
+    if (!query) {
+      return response.badRequest({ error: 'Query parameter q is required' })
+    }
+
+    const sidecarUrl = env.get('SIDECAR_URL', 'http://localhost:8100')
+
+    try {
+      const res = await fetch(`${sidecarUrl}/zim/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_path: resource.filePath,
+          query,
+          limit: Number(request.qs().limit) || 20,
+        }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        return response.status(res.status).json({ error: (body as any).detail || 'Sidecar error' })
+      }
+
+      return response.ok(await res.json())
+    } catch (err) {
+      return response.serviceUnavailable({ error: 'Python sidecar is not available. Enable it in Services.' })
+    }
+  }
+
+  /**
+   * Read a single ZIM article via sidecar.
+   * GET /api/library/:id/zim/article?path=A/Article_Name
+   */
+  async zimArticle({ params, request, response }: HttpContext) {
+    const resource = await InstalledResource.findOrFail(params.id)
+
+    if (resource.resourceType !== 'zim' || !resource.filePath) {
+      return response.badRequest({ error: 'Not a ZIM resource or file not available' })
+    }
+
+    const articlePath = request.qs().path
+    if (!articlePath) {
+      return response.badRequest({ error: 'Query parameter path is required' })
+    }
+
+    const sidecarUrl = env.get('SIDECAR_URL', 'http://localhost:8100')
+
+    try {
+      const res = await fetch(`${sidecarUrl}/zim/article`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_path: resource.filePath,
+          path: articlePath,
+        }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        return response.status(res.status).json({ error: (body as any).detail || 'Sidecar error' })
+      }
+
+      return response.ok(await res.json())
+    } catch (err) {
+      return response.serviceUnavailable({ error: 'Python sidecar is not available. Enable it in Services.' })
+    }
   }
 
   /**
@@ -144,5 +300,97 @@ export default class LibraryController {
   async downloads() {
     const downloadService = new DownloadService()
     return downloadService.listActive()
+  }
+
+  /**
+   * Auto-ingest a resource into the RAG pipeline.
+   * Creates a KnowledgeSource record and runs the ingestion service.
+   */
+  private async autoIngest(resource: InstalledResource): Promise<void> {
+    resource.status = 'embedding'
+    await resource.save()
+
+    try {
+      if (resource.resourceType === 'pdf') {
+        // PDF: ingest directly via file pipeline
+        const ks = await KnowledgeSource.create({
+          name: resource.name,
+          filePath: resource.filePath,
+          sourceType: 'pdf',
+          mimeType: 'application/pdf',
+          status: 'pending',
+          chunkCount: 0,
+          fileSize: resource.fileSize,
+        })
+
+        resource.knowledgeSourceId = ks.id
+        resource.ragEnabled = true
+        await resource.save()
+
+        const ingestion = new IngestionService()
+        await ingestion.ingestFile(ks.id)
+
+        resource.status = 'ready'
+        await resource.save()
+        logger.info({ resourceId: resource.id, knowledgeSourceId: ks.id }, 'PDF auto-ingested')
+      } else if (resource.resourceType === 'zim') {
+        // ZIM: extract articles via sidecar, then ingest text
+        const sidecarUrl = env.get('SIDECAR_URL', 'http://localhost:8100')
+
+        const res = await fetch(`${sidecarUrl}/extract/zim`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file_path: resource.filePath,
+            limit: 500,
+          }),
+        })
+
+        if (!res.ok) {
+          throw new Error(`Sidecar ZIM extraction failed: ${res.status}`)
+        }
+
+        const articles = (await res.json()) as Array<{ title: string; content: string }>
+
+        const ks = await KnowledgeSource.create({
+          name: resource.name,
+          filePath: resource.filePath,
+          sourceType: 'zim',
+          mimeType: 'application/x-zim',
+          status: 'pending',
+          chunkCount: 0,
+          fileSize: resource.fileSize,
+          metadata: { articleCount: articles.length },
+        })
+
+        resource.knowledgeSourceId = ks.id
+        resource.ragEnabled = true
+        await resource.save()
+
+        // Combine articles into a single text block with headings for structured chunking
+        const combinedText = articles
+          .map((a) => `# ${a.title}\n\n${a.content}`)
+          .join('\n\n---\n\n')
+
+        const ingestion = new IngestionService()
+        await ingestion.ingestText(ks.id, combinedText)
+
+        resource.status = 'ready'
+        await resource.save()
+        logger.info(
+          { resourceId: resource.id, knowledgeSourceId: ks.id, articles: articles.length },
+          'ZIM auto-ingested'
+        )
+      } else {
+        // Maps/other types don't get ingested
+        resource.status = 'installed'
+        await resource.save()
+      }
+    } catch (error) {
+      resource.status = 'failed'
+      resource.errorMessage = error instanceof Error ? error.message : 'Ingestion failed'
+      await resource.save()
+      throw error
+    }
   }
 }

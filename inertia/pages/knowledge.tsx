@@ -1,5 +1,5 @@
 import { Head } from '@inertiajs/react'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import AppLayout from '~/layouts/app_layout'
 import { apiFetch } from '~/lib/fetch'
 
@@ -44,6 +44,25 @@ export default function Knowledge({ sources }: Props) {
   const [textTitle, setTextTitle] = useState('')
   const [textContent, setTextContent] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Poll for status updates when sources are in-progress
+  useEffect(() => {
+    const hasActive = items.some((s) =>
+      ['pending', 'extracting', 'chunking', 'embedding', 'entity_extracting'].includes(s.status)
+    )
+    if (!hasActive) return
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(window.location.href, { headers: { Accept: 'application/json' } })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.props?.sources) setItems(data.props.sources)
+        }
+      } catch { /* */ }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [items])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -109,7 +128,7 @@ export default function Knowledge({ sources }: Props) {
     try {
       await apiFetch(`/api/knowledge/${id}/re-embed`, { method: 'POST' })
       setItems((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, status: 'pending', chunkCount: 0 } : s))
+        prev.map((s) => (s.id === id ? { ...s, status: 'pending', chunkCount: 0, errorMessage: null } : s))
       )
     } catch {
       // ignore
@@ -212,11 +231,18 @@ export default function Knowledge({ sources }: Props) {
                   </div>
                 </div>
                 <div className="flex gap-1 ml-4">
+                  {source.status === 'failed' && (
+                    <button
+                      onClick={() => handleReEmbed(source.id)}
+                      className="px-3 py-1.5 text-xs bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 rounded-lg font-medium transition-colors"
+                    >
+                      Retry
+                    </button>
+                  )}
                   {source.status === 'completed' && (
                     <button
                       onClick={() => handleReEmbed(source.id)}
                       className="px-2 py-1 text-xs text-zinc-400 hover:text-blue-400"
-                      title="Re-embed"
                     >
                       Re-embed
                     </button>
@@ -224,7 +250,6 @@ export default function Knowledge({ sources }: Props) {
                   <button
                     onClick={() => handleDelete(source.id)}
                     className="px-2 py-1 text-xs text-zinc-400 hover:text-red-400"
-                    title="Delete"
                   >
                     Delete
                   </button>

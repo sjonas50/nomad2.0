@@ -73,6 +73,10 @@ router
     // Library / Downloads API
     router.post('/library/download', [LibraryController, 'download']).use(middleware.auth())
     router.get('/library/downloads', [LibraryController, 'downloads']).use(middleware.auth())
+    router.post('/library/:id/ingest', [LibraryController, 'ingest']).use(middleware.auth())
+    router.get('/library/:id/read', [LibraryController, 'read']).use(middleware.auth())
+    router.get('/library/:id/zim/search', [LibraryController, 'zimSearch']).use(middleware.auth())
+    router.get('/library/:id/zim/article', [LibraryController, 'zimArticle']).use(middleware.auth())
     router.delete('/library/:id', [LibraryController, 'destroy']).use(middleware.auth())
 
     // Docker services API

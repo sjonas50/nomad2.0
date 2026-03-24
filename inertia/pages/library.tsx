@@ -31,6 +31,8 @@ interface InstalledItem {
   status: string
   fileSize: number
   ragEnabled: boolean
+  knowledgeSourceId: number | null
+  filePath: string | null
 }
 
 interface Props {
@@ -77,6 +79,25 @@ export default function Library({ available, packs, installed: initialInstalled 
   const [downloading, setDownloading] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState<Tab>('packs')
   const [expandedPack, setExpandedPack] = useState<string | null>(null)
+
+  // Poll for status updates when resources are in-progress
+  useEffect(() => {
+    const hasActiveItems = installed.some((r) =>
+      r.status === 'downloading' || r.status === 'embedding'
+    )
+    if (!hasActiveItems) return
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(window.location.href, { headers: { Accept: 'application/json' } })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.props?.installed) setInstalled(data.props.installed)
+        }
+      } catch { /* */ }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [installed])
 
   const knowledgeItems = useMemo(
     () => available.filter((a) => a.category !== 'Maps'),
@@ -129,6 +150,30 @@ export default function Library({ available, packs, installed: initialInstalled 
       await apiFetch(`/api/library/${id}`, { method: 'DELETE' })
       setInstalled((prev) => prev.filter((r) => r.id !== id))
     } catch { /* */ }
+  }
+
+  const [ingesting, setIngesting] = useState<Set<number>>(new Set())
+  const [zimViewer, setZimViewer] = useState<{ resourceId: number; name: string } | null>(null)
+
+  const handleIngest = async (id: number) => {
+    setIngesting((prev) => new Set(prev).add(id))
+    try {
+      const res = await apiFetch(`/api/library/${id}/ingest`, { method: 'POST' })
+      if (res.ok) {
+        setInstalled((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, status: 'embedding' } : r))
+        )
+      }
+    } catch { /* */ }
+    setIngesting((prev) => { const n = new Set(prev); n.delete(id); return n })
+  }
+
+  const handleRead = (resource: InstalledItem) => {
+    if (resource.resourceType === 'pdf' && resource.filePath) {
+      window.open(`/api/library/${resource.id}/read`, '_blank')
+    } else if (resource.resourceType === 'zim') {
+      setZimViewer({ resourceId: resource.id, name: resource.name })
+    }
   }
 
   return (
@@ -259,14 +304,21 @@ export default function Library({ available, packs, installed: initialInstalled 
               return (
                 <div key={cat}>
                   <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mt-4 mb-2">{cat}</h3>
-                  {items.map((item) => (
-                    <ContentCard
-                      key={item.id}
-                      item={item}
-                      downloading={downloading.has(item.id)}
-                      onDownload={() => handleDownload(item)}
-                    />
-                  ))}
+                  {items.map((item) => {
+                    const matchedResource = installed.find((r) => r.name === item.name) || null
+                    return (
+                      <ContentCard
+                        key={item.id}
+                        item={item}
+                        downloading={downloading.has(item.id)}
+                        onDownload={() => handleDownload(item)}
+                        installedResource={matchedResource}
+                        onIngest={handleIngest}
+                        onRead={handleRead}
+                        isIngesting={matchedResource ? ingesting.has(matchedResource.id) || matchedResource.status === 'embedding' : false}
+                      />
+                    )
+                  })}
                 </div>
               )
             })}
@@ -286,37 +338,74 @@ export default function Library({ available, packs, installed: initialInstalled 
               </div>
             ) : (
               <div className="space-y-2">
-                {installed.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between p-4 bg-surface-800 rounded-xl border border-zinc-800"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <TypeBadge type={r.resourceType} />
-                      <div className="min-w-0">
-                        <span className="text-white text-sm truncate block">{r.name}</span>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`px-2 py-0.5 text-xs rounded-full ${STATUS_COLORS[r.status] || 'bg-zinc-700 text-zinc-400'}`}>
-                            {r.status}
-                          </span>
-                          {r.fileSize > 0 && (
-                            <span className="text-xs text-zinc-600">{formatSize(r.fileSize / (1024 * 1024))}</span>
-                          )}
-                          {r.ragEnabled && (
-                            <span className="text-xs text-emerald-400">RAG</span>
-                          )}
+                {installed.map((r) => {
+                  const canRead = (r.resourceType === 'pdf' || r.resourceType === 'zim') && r.filePath && r.status !== 'downloading'
+                  const canIngest = (r.resourceType === 'pdf' || r.resourceType === 'zim') && r.filePath && !r.ragEnabled && (r.status === 'installed' || r.status === 'failed')
+                  const isIngesting = ingesting.has(r.id) || r.status === 'embedding'
+                  return (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between p-4 bg-surface-800 rounded-xl border border-zinc-800"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <TypeBadge type={r.resourceType} />
+                        <div className="min-w-0">
+                          <span className="text-white text-sm truncate block">{r.name}</span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`px-2 py-0.5 text-xs rounded-full ${STATUS_COLORS[r.status] || 'bg-zinc-700 text-zinc-400'}`}>
+                              {r.status}
+                            </span>
+                            {r.fileSize > 0 && (
+                              <span className="text-xs text-zinc-600">{formatSize(r.fileSize / (1024 * 1024))}</span>
+                            )}
+                            {r.ragEnabled && (
+                              <span className="text-xs text-emerald-400 font-medium">RAG enabled</span>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-2 ml-2 shrink-0">
+                        {canRead && (
+                          <button
+                            onClick={() => handleRead(r)}
+                            className="px-3 py-1.5 text-xs bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 rounded-lg font-medium transition-colors"
+                          >
+                            Read
+                          </button>
+                        )}
+                        {canIngest && (
+                          <button
+                            onClick={() => handleIngest(r.id)}
+                            disabled={isIngesting}
+                            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors disabled:opacity-40 ${
+                              r.status === 'failed'
+                                ? 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
+                                : 'bg-purple-500/15 text-purple-400 hover:bg-purple-500/25'
+                            }`}
+                          >
+                            {isIngesting ? 'Ingesting...' : r.status === 'failed' ? 'Retry' : 'Add to AI'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(r.id)}
+                          className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => handleDelete(r.id)}
-                      className="text-xs text-zinc-600 hover:text-red-400 transition-colors ml-2"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
+            )}
+
+            {/* ZIM Viewer Modal */}
+            {zimViewer && (
+              <ZimViewer
+                resourceId={zimViewer.resourceId}
+                name={zimViewer.name}
+                onClose={() => setZimViewer(null)}
+              />
             )}
           </div>
         )}
@@ -332,29 +421,81 @@ function ContentCard({
   downloading,
   onDownload,
   compact,
+  installedResource,
+  onIngest,
+  onRead,
+  isIngesting,
 }: {
   item: AvailableItem
   downloading: boolean
   onDownload: () => void
   compact?: boolean
+  installedResource?: InstalledItem | null
+  onIngest?: (id: number) => void
+  onRead?: (r: InstalledItem) => void
+  isIngesting?: boolean
 }) {
+  const r = installedResource
+  const canIngest = r && (r.resourceType === 'pdf' || r.resourceType === 'zim') && r.filePath && !r.ragEnabled && (r.status === 'installed' || r.status === 'failed')
+  const canRead = r && (r.resourceType === 'pdf' || r.resourceType === 'zim') && r.filePath && r.status !== 'downloading'
+
   return (
-    <div className="flex items-center justify-between p-4 bg-surface-800 rounded-xl border border-zinc-800 hover:border-zinc-700 transition-colors">
+    <div className={`flex items-center justify-between p-4 rounded-xl border transition-colors ${
+      r ? 'bg-surface-800 border-zinc-800' : 'bg-surface-800 border-zinc-800 hover:border-zinc-700'
+    }`}>
       <div className="flex items-start gap-3 min-w-0 flex-1">
         <TypeBadge type={item.type} />
         <div className="min-w-0">
           <div className="text-sm text-white font-medium">{item.name}</div>
           {!compact && <div className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{item.description}</div>}
-          <div className="text-xs text-zinc-600 mt-1">{formatSize(item.sizeMb)}</div>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-zinc-600">{formatSize(item.sizeMb)}</span>
+            {r && (
+              <span className={`px-2 py-0.5 text-xs rounded-full ${STATUS_COLORS[r.status] || 'bg-zinc-700 text-zinc-400'}`}>
+                {r.status}
+              </span>
+            )}
+            {r?.ragEnabled && (
+              <span className="text-xs text-emerald-400 font-medium">RAG enabled</span>
+            )}
+          </div>
         </div>
       </div>
-      <button
-        onClick={onDownload}
-        disabled={downloading}
-        className="ml-3 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-medium disabled:opacity-40 transition-colors shrink-0"
-      >
-        {downloading ? 'Starting...' : 'Download'}
-      </button>
+      <div className="flex items-center gap-2 ml-3 shrink-0">
+        {canRead && onRead && (
+          <button
+            onClick={() => onRead(r)}
+            className="px-3 py-1.5 text-xs bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 rounded-lg font-medium transition-colors"
+          >
+            Read
+          </button>
+        )}
+        {canIngest && onIngest && (
+          <button
+            onClick={() => onIngest(r.id)}
+            disabled={isIngesting}
+            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors disabled:opacity-40 ${
+              r.status === 'failed'
+                ? 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
+                : 'bg-purple-500/15 text-purple-400 hover:bg-purple-500/25'
+            }`}
+          >
+            {isIngesting ? 'Ingesting...' : r.status === 'failed' ? 'Retry' : 'Add to AI'}
+          </button>
+        )}
+        {!r && (
+          <button
+            onClick={onDownload}
+            disabled={downloading}
+            className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-medium disabled:opacity-40 transition-colors"
+          >
+            {downloading ? 'Starting...' : 'Download'}
+          </button>
+        )}
+        {r && r.status === 'downloading' && (
+          <span className="px-3 py-1.5 text-xs text-blue-400">Downloading...</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -618,6 +759,112 @@ function UploadPmtiles() {
       {error && (
         <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-sm text-red-400">{error}</div>
       )}
+    </div>
+  )
+}
+
+function ZimViewer({ resourceId, name, onClose }: { resourceId: number; name: string; onClose: () => void }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Array<{ title: string; path: string }>>([])
+  const [article, setArticle] = useState<{ title: string; html: string } | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const handleSearch = async () => {
+    if (!query.trim()) return
+    setSearching(true)
+    setArticle(null)
+    try {
+      const res = await fetch(`/api/library/${resourceId}/zim/search?q=${encodeURIComponent(query)}&limit=20`)
+      if (res.ok) {
+        setResults(await res.json())
+      }
+    } catch { /* sidecar unavailable */ }
+    setSearching(false)
+  }
+
+  const openArticle = async (path: string) => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/library/${resourceId}/zim/article?path=${encodeURIComponent(path)}`)
+      if (res.ok) {
+        setArticle(await res.json())
+      }
+    } catch { /* */ }
+    setLoading(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface-900 rounded-2xl border border-zinc-700 shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+          <h2 className="text-white font-semibold">{name}</h2>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-lg">&times;</button>
+        </div>
+
+        {/* Search bar */}
+        <div className="p-4 border-b border-zinc-800">
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSearch() }}
+            className="flex gap-2"
+          >
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search articles..."
+              className="flex-1 bg-surface-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+            />
+            <button
+              type="submit"
+              disabled={searching}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600 disabled:opacity-40 transition-colors"
+            >
+              {searching ? 'Searching...' : 'Search'}
+            </button>
+          </form>
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 overflow-auto p-4">
+          {article ? (
+            <div>
+              <button
+                onClick={() => setArticle(null)}
+                className="mb-3 text-xs text-brand-400 hover:text-brand-300"
+              >
+                &larr; Back to results
+              </button>
+              <h3 className="text-xl font-bold text-white mb-4">{article.title}</h3>
+              <div
+                className="prose prose-invert prose-sm max-w-none text-zinc-300"
+                dangerouslySetInnerHTML={{ __html: article.html }}
+              />
+            </div>
+          ) : loading ? (
+            <div className="text-center py-8 text-zinc-500">Loading article...</div>
+          ) : results.length > 0 ? (
+            <div className="space-y-1">
+              {results.map((r) => (
+                <button
+                  key={r.path}
+                  onClick={() => openArticle(r.path)}
+                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-surface-800 transition-colors"
+                >
+                  <span className="text-sm text-white">{r.title}</span>
+                  <span className="text-xs text-zinc-600 ml-2">{r.path}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-zinc-500">
+              <p>Search for articles in this ZIM file</p>
+              <p className="text-xs text-zinc-600 mt-1">Requires the Python sidecar to be running</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

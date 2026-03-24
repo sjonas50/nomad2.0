@@ -2,8 +2,10 @@ import type { HttpContext } from '@adonisjs/core/http'
 import User from '#models/user'
 import AuditLog from '#models/audit_log'
 import PromptTemplate from '#models/prompt_template'
+import ModelRole from '#models/model_role'
 import BackupService from '#services/backup_service'
 import HealthService from '#services/health_service'
+import OllamaService from '#services/ollama_service'
 
 export default class AdminController {
   /**
@@ -25,9 +27,29 @@ export default class AdminController {
     this.assertAdmin(ctx)
     const { inertia } = ctx
     const healthService = new HealthService()
+    const ollama = new OllamaService()
     const health = await healthService.check()
     const users = await User.query().orderBy('createdAt', 'desc')
     const recentLogs = await AuditLog.query().orderBy('createdAt', 'desc').limit(20)
+
+    let installedModels: string[] = []
+    let ollamaAvailable = false
+    let modelRoles: { roleName: string; modelName: string }[] = []
+
+    try {
+      ollamaAvailable = await ollama.isAvailable()
+      if (ollamaAvailable) {
+        const models = await ollama.listModels()
+        installedModels = models.map((m: { name: string }) => m.name)
+      }
+    } catch { /* Ollama not available */ }
+
+    try {
+      const roles = await ModelRole.all()
+      modelRoles = roles.map((r) => ({ roleName: r.roleName, modelName: r.modelName }))
+    } catch { /* DB might not be ready */ }
+
+    const { MODEL_CATALOG } = await import('#config/models')
 
     return inertia.render('admin/dashboard' as any, {
       health,
@@ -47,6 +69,10 @@ export default class AdminController {
         ipAddress: l.ipAddress,
         createdAt: l.createdAt?.toISO(),
       })),
+      ollamaAvailable,
+      installedModels,
+      modelCatalog: MODEL_CATALOG,
+      modelRoles,
     })
   }
 
