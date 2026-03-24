@@ -166,9 +166,32 @@ services:
       retries: 5
       start_period: 20s
 
+  # Config-gated: only starts with --profile full or --profile tak
+  opentakserver:
+    image: ghcr.io/brian7704/opentakserver:latest
+    container_name: attic_tak
+    restart: unless-stopped
+    profiles: ['full', 'tak']
+    ports:
+      - '8089:8089'   # CoT TCP
+      - '8443:8443'   # CoT TLS
+      - '8080:8080'   # Web UI
+    volumes:
+      - tak_data:/opt/ots
+    environment:
+      OTS_ENABLE_TCP: 'true'
+      OTS_TCP_PORT: '8089'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
 volumes:
   mysql_data:
   redis_data:
   ollama_data:
   qdrant_data:
   falkordb_data:
+  tak_data:
