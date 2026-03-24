@@ -12,16 +12,23 @@ export default class SyncExport extends BaseCommand {
   @flags.number({ description: 'Export only a specific incident', alias: 'i' })
   declare incidentId?: number
 
+  @flags.string({ description: 'Encrypt bundle with passphrase', alias: 'p' })
+  declare passphrase?: string
+
   async run() {
     const BundleService = (await import('#services/bundle_service')).default
     const bundleService = new BundleService()
 
     this.logger.info('Creating .attic bundle...')
+    if (this.passphrase) {
+      this.logger.info('Bundle will be encrypted with AES-256-GCM')
+    }
 
     try {
       const result = await bundleService.exportBundle({
         incidentId: this.incidentId,
         outputPath: this.outputPath,
+        passphrase: this.passphrase,
       })
 
       const sizeMB = (result.sizeBytes / (1024 * 1024)).toFixed(2)

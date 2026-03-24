@@ -56,7 +56,7 @@ export default class BundleService {
    * Export a full .attic bundle (tar.gz containing MySQL dump, Qdrant snapshot,
    * Yjs state, and a manifest).
    */
-  async exportBundle(options?: { incidentId?: number; outputPath?: string }): Promise<BundleInfo> {
+  async exportBundle(options?: { incidentId?: number; outputPath?: string; passphrase?: string }): Promise<BundleInfo> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
     const bundleName = options?.incidentId
       ? `attic-incident-${options.incidentId}-${timestamp}.attic`
@@ -114,6 +114,15 @@ export default class BundleService {
       const outputPath = options?.outputPath || join(BUNDLE_DIR, bundleName)
       await execFileAsync('tar', ['-czf', outputPath, '-C', stagingDir, '.'])
 
+      // 6. Encrypt if passphrase provided
+      if (options?.passphrase) {
+        const plainData = await readFile(outputPath)
+        const encrypted = await this.encrypt(plainData, options.passphrase)
+        await writeFile(outputPath, encrypted)
+        manifest.components.knowledge = true // repurpose as "encrypted" flag
+        logger.info({ bundle: bundleName }, 'Bundle encrypted with AES-256-GCM')
+      }
+
       const stats = await stat(outputPath)
       logger.info({ bundle: bundleName, size: stats.size }, 'Bundle exported')
 
@@ -133,13 +142,22 @@ export default class BundleService {
   /**
    * Import a .attic bundle. Reads manifest and applies components.
    */
-  async importBundle(bundlePath: string): Promise<{ manifest: BundleManifest; applied: string[] }> {
+  async importBundle(bundlePath: string, passphrase?: string): Promise<{ manifest: BundleManifest; applied: string[] }> {
     const stagingDir = join(BUNDLE_STAGING_DIR, `import-${Date.now()}`)
     await mkdir(stagingDir, { recursive: true })
 
     try {
+      // Decrypt if passphrase provided
+      let extractPath = bundlePath
+      if (passphrase) {
+        const encryptedData = await readFile(bundlePath)
+        const decrypted = await this.decrypt(encryptedData, passphrase)
+        extractPath = join(stagingDir, 'decrypted.tar.gz')
+        await writeFile(extractPath, decrypted)
+      }
+
       // Extract bundle
-      await execFileAsync('tar', ['-xzf', bundlePath, '-C', stagingDir])
+      await execFileAsync('tar', ['-xzf', extractPath, '-C', stagingDir])
 
       // Read manifest
       const manifestPath = join(stagingDir, 'manifest.json')
@@ -323,5 +341,35 @@ export default class BundleService {
     if (!response.ok) {
       logger.warn(`Qdrant snapshot restore returned ${response.status}`)
     }
+  }
+
+  /**
+   * Encrypt data with AES-256-GCM using a passphrase-derived key (scrypt).
+   * Format: [16-byte salt][12-byte IV][ciphertext][16-byte auth tag]
+   */
+  async encrypt(data: Buffer, passphrase: string): Promise<Buffer> {
+    const { scryptSync, randomBytes, createCipheriv } = await import('node:crypto')
+    const salt = randomBytes(16)
+    const key = scryptSync(passphrase, salt, 32)
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', key, iv)
+    const encrypted = Buffer.concat([cipher.update(data), cipher.final()])
+    const tag = cipher.getAuthTag()
+    return Buffer.concat([salt, iv, encrypted, tag])
+  }
+
+  /**
+   * Decrypt data encrypted with encrypt().
+   */
+  async decrypt(data: Buffer, passphrase: string): Promise<Buffer> {
+    const { scryptSync, createDecipheriv } = await import('node:crypto')
+    const salt = data.subarray(0, 16)
+    const iv = data.subarray(16, 28)
+    const tag = data.subarray(data.length - 16)
+    const encrypted = data.subarray(28, data.length - 16)
+    const key = scryptSync(passphrase, salt, 32)
+    const decipher = createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(tag)
+    return Buffer.concat([decipher.update(encrypted), decipher.final()])
   }
 }

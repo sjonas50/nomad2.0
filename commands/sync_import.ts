@@ -1,4 +1,4 @@
-import { BaseCommand, args } from '@adonisjs/core/ace'
+import { BaseCommand, args, flags } from '@adonisjs/core/ace'
 import type { CommandOptions } from '@adonisjs/core/types/ace'
 
 export default class SyncImport extends BaseCommand {
@@ -8,6 +8,9 @@ export default class SyncImport extends BaseCommand {
 
   @args.string({ description: 'Path to the .attic bundle file' })
   declare bundlePath: string
+
+  @flags.string({ description: 'Decrypt bundle with passphrase', alias: 'p' })
+  declare passphrase?: string
 
   async run() {
     const BundleService = (await import('#services/bundle_service')).default
@@ -31,7 +34,7 @@ export default class SyncImport extends BaseCommand {
     }
 
     try {
-      const result = await bundleService.importBundle(this.bundlePath)
+      const result = await bundleService.importBundle(this.bundlePath, this.passphrase)
 
       this.logger.success(`Bundle imported successfully`)
       this.logger.info(`Source node: ${result.manifest.nodeId}`)

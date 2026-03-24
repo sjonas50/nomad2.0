@@ -1,58 +1,63 @@
 #!/usr/bin/env bash
-# Hardware detection script for The Attic AI
-# Outputs JSON with system info for profile selection
+# Detect hardware and recommend model/whisper configuration
+# Usage: ./scripts/detect_hardware.sh
+# Output: JSON with recommended config
 
 set -euo pipefail
 
-# RAM (KB → GB)
-if [ -f /proc/meminfo ]; then
-  RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-elif command -v sysctl >/dev/null 2>&1; then
-  RAM_KB=$(sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1024)}')
-else
-  RAM_KB=0
-fi
-RAM_GB=$((RAM_KB / 1024 / 1024))
-
-# CPU
-CPU_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
+IS_APPLE_SILICON=false
 ARCH=$(uname -m)
+CHIP=""
 
-# GPU detection (NVIDIA)
-GPU="none"
-if command -v nvidia-smi >/dev/null 2>&1; then
-  GPU=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "nvidia-unknown")
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  TOTAL_RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+  TOTAL_RAM_GB=$((TOTAL_RAM_BYTES / 1024 / 1024 / 1024))
+  CPU_CORES=$(sysctl -n hw.ncpu 2>/dev/null || echo "1")
+  if [[ "$ARCH" == "arm64" ]]; then
+    IS_APPLE_SILICON=true
+    CHIP=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Apple Silicon")
+  fi
+else
+  TOTAL_RAM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo "0")
+  TOTAL_RAM_GB=$((TOTAL_RAM_KB / 1024 / 1024))
+  CPU_CORES=$(nproc 2>/dev/null || echo "1")
 fi
 
-# Disk space (GB)
-DISK_FREE_GB=$(df -BG . 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G' || echo "0")
+# Model recommendations
+OLLAMA_MODEL="qwen2.5:1.5b"
+WHISPER_MODEL="base.en"
+OLLAMA_NUM_CTX=4096
 
-# Recommend profile
-PROFILE="default"
-if [ "$RAM_GB" -ge 16 ]; then
-  PROFILE="full"
-elif [ "$RAM_GB" -ge 12 ]; then
-  PROFILE="graph"
-fi
-
-# Recommend max model size
-MAX_MODEL="1.5b"
-if [ "$RAM_GB" -ge 32 ]; then
-  MAX_MODEL="13b"
-elif [ "$RAM_GB" -ge 16 ]; then
-  MAX_MODEL="8b"
-elif [ "$RAM_GB" -ge 12 ]; then
-  MAX_MODEL="3b"
+if [ "$TOTAL_RAM_GB" -ge 48 ]; then
+  OLLAMA_MODEL="qwen2.5:32b"
+  WHISPER_MODEL="small.en"
+  OLLAMA_NUM_CTX=8192
+elif [ "$TOTAL_RAM_GB" -ge 24 ]; then
+  OLLAMA_MODEL="qwen2.5:14b"
+  WHISPER_MODEL="small.en"
+  OLLAMA_NUM_CTX=8192
+elif [ "$TOTAL_RAM_GB" -ge 16 ]; then
+  OLLAMA_MODEL="qwen2.5:7b"
+  WHISPER_MODEL="base.en"
+  OLLAMA_NUM_CTX=4096
 fi
 
 cat <<EOF
 {
-  "ram_gb": ${RAM_GB},
-  "cpu_cores": ${CPU_CORES},
-  "arch": "${ARCH}",
-  "gpu": "${GPU}",
-  "disk_free_gb": ${DISK_FREE_GB},
-  "recommended_profile": "${PROFILE}",
-  "max_model_size": "${MAX_MODEL}"
+  "platform": "$(uname -s)",
+  "arch": "$ARCH",
+  "is_apple_silicon": $IS_APPLE_SILICON,
+  "chip": "$CHIP",
+  "ram_gb": $TOTAL_RAM_GB,
+  "cpu_cores": $CPU_CORES,
+  "metal_gpu": $IS_APPLE_SILICON,
+  "recommended": {
+    "ollama_model": "$OLLAMA_MODEL",
+    "max_model_size": "$OLLAMA_MODEL",
+    "whisper_model": "$WHISPER_MODEL",
+    "ollama_num_ctx": $OLLAMA_NUM_CTX,
+    "recommended_profile": "$([ "$TOTAL_RAM_GB" -ge 16 ] && echo "full" || echo "default")",
+    "docker_profile": "$([ "$TOTAL_RAM_GB" -ge 16 ] && echo "full" || echo "default")"
+  }
 }
 EOF
