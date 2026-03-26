@@ -1,0 +1,73 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14  # Apple Silicon runner (M1)
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Docker (Colima)
+        run: |
+          brew install docker colima
+          colima start --cpu 4 --memory 8 --arch aarch64
+          # Wait for Docker to be ready
+          for i in $(seq 1 30); do
+            docker info &>/dev/null && break
+            sleep 2
+          done
+          docker info
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build bundle (without models)
+        run: |
+          chmod +x scripts/bundle.sh
+          ./scripts/bundle.sh --no-models --version "${{ steps.version.outputs.VERSION }}"
+
+      - name: Generate checksums
+        working-directory: dist
+        run: |
+          shasum -a 256 *.zip > checksums-sha256.txt
+          cat checksums-sha256.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "The Attic AI v${{ steps.version.outputs.VERSION }}"
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/*.zip
+            dist/checksums-sha256.txt
+          body: |
+            ## Installation
+
+            1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if you don't have it
+            2. Download `attic-ai-v${{ steps.version.outputs.VERSION }}-arm64.zip` below
+            3. Unzip and double-click `install.command`
+            4. Open http://localhost:3333
+
+            **Requirements:** macOS (Apple Silicon), Docker Desktop
+
+            > **Note:** AI models (~1-5GB) are downloaded automatically on first run.
+            > First install takes 5-10 minutes depending on your internet speed.
+
+            ## Verify download
+            ```bash
+            shasum -a 256 -c checksums-sha256.txt
+            ```
