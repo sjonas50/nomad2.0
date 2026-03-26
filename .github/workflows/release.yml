@@ -107,7 +107,10 @@ jobs:
           INSTALL:
             1. Install Docker Desktop if you don't have it
             2. Start Docker Desktop and wait for it to be ready
-            3. Double-click install.command
+            3. Right-click install.command > Open > Open
+               (macOS blocks downloaded scripts — right-click bypasses this)
+            4. If blocked, go to System Settings > Privacy & Security > Open Anyway
+               Or run in Terminal: xattr -rd com.apple.quarantine . && ./install.command
 
             The installer pulls Docker images (~3GB) and AI models (~1-5GB).
             First install takes 10-20 minutes depending on internet speed.
@@ -115,7 +118,7 @@ jobs:
             Open http://localhost:3333 when complete.
 
           UNINSTALL:
-            Double-click uninstall.command
+            Right-click uninstall.command > Open > Open
           README
 
           zip -qr "attic-ai-v${VERSION}-arm64.zip" "$STAGING/"
@@ -143,10 +146,11 @@ jobs:
 
             1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if you don't have it
             2. Download `attic-ai-v${{ steps.version.outputs.VERSION }}-arm64.zip` below
-            3. Unzip and double-click `install.command`
-            4. Open http://localhost:3333
+            3. Unzip the archive
+            4. **Right-click** `install.command` → **Open** → click **Open** again _(macOS blocks downloaded scripts)_
+            5. Open http://localhost:3333 when complete
 
-            **Requirements:** macOS (Apple Silicon), internet connection for first install, Docker Desktop
+            **Requirements:** macOS (Apple Silicon), internet connection, Docker Desktop
 
             > **Note:** The installer pulls Docker images (~3GB) and AI models (~1-5GB) on first run.
             > Install takes 10-20 minutes depending on internet speed.
