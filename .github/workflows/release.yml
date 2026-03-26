@@ -35,23 +35,15 @@ jobs:
             --output type=docker \
             .
 
-      - name: Build attic-sidecar image (arm64)
-        if: hashFiles('sidecar/Dockerfile') != ''
+      - name: Pull core dependency images (arm64)
         run: |
-          docker buildx build --platform linux/arm64 \
-            -t attic-sidecar:latest \
-            --output type=docker \
-            ./sidecar
-
-      - name: Pull dependency images (arm64)
-        run: |
+          # Core services only — optional services (FalkorDB, sidecar, TAK)
+          # are pulled on-demand when enabled from the admin UI
           IMAGES=(
             "mysql:8.0"
             "redis:7-alpine"
             "ollama/ollama:latest"
             "qdrant/qdrant:v1.12.1"
-            "falkordb/falkordb-server:latest"
-            "ghcr.io/brian7704/opentakserver:latest"
           )
           for img in "${IMAGES[@]}"; do
             echo "Pulling $img for arm64..."
@@ -62,23 +54,22 @@ jobs:
         run: |
           mkdir -p staging/images
 
-          SAVE_IMAGES="attic-admin:latest mysql:8.0 redis:7-alpine ollama/ollama:latest qdrant/qdrant:v1.12.1 falkordb/falkordb-server:latest ghcr.io/brian7704/opentakserver:latest"
-          if [ -f sidecar/Dockerfile ]; then
-            SAVE_IMAGES="$SAVE_IMAGES attic-sidecar:latest"
-          fi
+          docker save \
+            attic-admin:latest \
+            mysql:8.0 \
+            redis:7-alpine \
+            ollama/ollama:latest \
+            qdrant/qdrant:v1.12.1 \
+            | gzip > staging/images/attic-images.tar.gz
 
-          docker save $SAVE_IMAGES | gzip > staging/images/attic-images.tar.gz
           echo "Image bundle size: $(du -sh staging/images/attic-images.tar.gz | cut -f1)"
 
       - name: Assemble distribution package
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
           STAGING="staging"
 
-          # Compose file
           cp docker-compose.prod.yml "$STAGING/docker-compose.yml"
 
-          # Env template
           cat > "$STAGING/.env.example" << 'ENVEOF'
           # The Attic AI — Environment Configuration
           TZ=UTC
@@ -109,12 +100,10 @@ jobs:
           BUNDLE_DIR=/app/storage/bundles
           ENVEOF
 
-          # Install/uninstall scripts
           cp install.command "$STAGING/install.command"
           cp uninstall.command "$STAGING/uninstall.command"
           chmod +x "$STAGING/install.command" "$STAGING/uninstall.command"
 
-          # README
           cat > "$STAGING/README.txt" << 'README'
           The Attic AI — Offline Knowledge Platform
           ==========================================
@@ -139,7 +128,6 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           BUNDLE_NAME="attic-ai-v${VERSION}-arm64.zip"
 
-          # Rename staging dir for clean zip structure
           mv staging "attic-ai-v${VERSION}-arm64"
           zip -qr "$BUNDLE_NAME" "attic-ai-v${VERSION}-arm64/"
 
@@ -173,7 +161,7 @@ jobs:
             **Requirements:** macOS (Apple Silicon), Docker Desktop
 
             > **Note:** AI models (~1-5GB) are downloaded automatically on first run.
-            > First install takes 5-10 minutes depending on your internet speed.
+            > Optional services (FalkorDB, Python sidecar, TAK Server) can be enabled from Admin > Services.
 
             ## Verify download
             ```bash
