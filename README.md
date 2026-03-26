@@ -138,19 +138,33 @@ An AI-first, offline-capable knowledge platform built for disaster response, con
 
 ## Quick Start
 
-### Install from Bundle (Recommended — No Git Required)
+**Requirements:** macOS (Apple Silicon), [Docker Desktop](https://www.docker.com/products/docker-desktop/), internet connection for first install
 
-The easiest way to run The Attic AI. Only prerequisite: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+### One-line install (recommended)
 
-1. Download the latest `attic-ai-vX.Y.Z-arm64.zip` from Releases
+```bash
+curl -fsSL https://raw.githubusercontent.com/sjonas50/nomad2.0/main/scripts/install-remote.sh | bash
+```
+
+### Homebrew
+
+```bash
+brew tap sjonas50/tap
+brew install attic-ai
+attic-ai-install
+```
+
+### Manual download
+
+1. Download the latest `attic-ai-vX.Y.Z-arm64.zip` from [Releases](https://github.com/sjonas50/nomad2.0/releases)
 2. Unzip it
-3. Double-click **`install.command`**
+3. Right-click **`install.command`** → **Open** → click **Open** again
 
-The installer loads all Docker images, sets up the database, detects your hardware, pulls the right AI models, and starts everything. When it's done, open **http://localhost:3333**.
+The installer pulls Docker images, sets up the database, detects your hardware, pulls the right AI models, and starts everything. When it's done, open **http://localhost:3333**.
 
-To remove everything: double-click **`uninstall.command`**.
+To remove everything: `attic-ai-uninstall` or right-click **`uninstall.command`** → **Open**.
 
-### Build the Bundle (For Distributors)
+### Air-gapped install (USB bundle)
 
 ```bash
 git clone https://github.com/sjonas50/nomad2.0.git
@@ -158,13 +172,7 @@ cd nomad2.0
 ./scripts/bundle.sh
 ```
 
-This produces `dist/attic-ai-vX.Y.Z-arm64.zip` (~8-15 GB depending on models) containing:
-- All Docker images (pre-built, no compilation needed)
-- Pre-pulled Ollama models (embedding + chat)
-- Production Docker Compose config
-- One-click install/uninstall scripts
-
-Copy the zip to a USB drive for air-gapped deployment.
+This produces `dist/attic-ai-vX.Y.Z-arm64.zip` (~8-15 GB) with all Docker images and AI models pre-bundled. Copy the zip to a USB drive — no internet needed on the target machine.
 
 ### Developer Install
 
