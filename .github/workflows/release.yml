@@ -54,12 +54,8 @@ jobs:
 
           mkdir -p "$STAGING"
 
-          # Compose file — rewrite attic_admin image to use GHCR
-          sed "s|build:|image: ghcr.io/${OWNER}/attic-admin:v${VERSION}  # build:|" \
-            docker-compose.prod.yml > "$STAGING/docker-compose.yml"
-
-          # Remove the build context lines (context: and dockerfile:)
-          sed -i '/^[[:space:]]*context:/d; /^[[:space:]]*dockerfile:/d' "$STAGING/docker-compose.yml"
+          # Compose file (already uses ghcr.io image)
+          cp docker-compose.prod.yml "$STAGING/docker-compose.yml"
 
           # Env template
           cat > "$STAGING/.env.example" << 'ENVEOF'
