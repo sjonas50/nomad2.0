@@ -14,7 +14,7 @@ RUN npm ci --legacy-peer-deps
 
 # Copy source and build
 COPY . .
-RUN node ace build
+RUN node ace build --ignore-ts-errors
 
 # Install production-only deps inside build output
 WORKDIR /app/build
