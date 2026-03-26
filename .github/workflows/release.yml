@@ -7,11 +7,12 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -24,52 +25,43 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build attic-admin image (arm64)
-        run: |
-          docker buildx build --platform linux/arm64 \
-            -t attic-admin:latest \
-            --output type=docker \
-            .
-
-      - name: Pull core dependency images (arm64)
-        run: |
-          # Core services only — optional services (FalkorDB, sidecar, TAK)
-          # are pulled on-demand when enabled from the admin UI
-          IMAGES=(
-            "mysql:8.0"
-            "redis:7-alpine"
-            "ollama/ollama:latest"
-            "qdrant/qdrant:v1.12.1"
-          )
-          for img in "${IMAGES[@]}"; do
-            echo "Pulling $img for arm64..."
-            docker pull --platform linux/arm64 "$img"
-          done
-
-      - name: Save all images to tarball
-        run: |
-          mkdir -p staging/images
-
-          docker save \
-            attic-admin:latest \
-            mysql:8.0 \
-            redis:7-alpine \
-            ollama/ollama:latest \
-            qdrant/qdrant:v1.12.1 \
-            | gzip > staging/images/attic-images.tar.gz
-
-          echo "Image bundle size: $(du -sh staging/images/attic-images.tar.gz | cut -f1)"
+      - name: Build and push attic-admin image (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/attic-admin:latest
+            ghcr.io/${{ github.repository_owner }}/attic-admin:v${{ steps.version.outputs.VERSION }}
 
       - name: Assemble distribution package
         run: |
-          STAGING="staging"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          OWNER="${{ github.repository_owner }}"
+          STAGING="attic-ai-v${VERSION}"
 
-          cp docker-compose.prod.yml "$STAGING/docker-compose.yml"
+          mkdir -p "$STAGING"
 
+          # Compose file — rewrite attic_admin image to use GHCR
+          sed "s|build:|image: ghcr.io/${OWNER}/attic-admin:v${VERSION}  # build:|" \
+            docker-compose.prod.yml > "$STAGING/docker-compose.yml"
+
+          # Remove the build context lines (context: and dockerfile:)
+          sed -i '/^[[:space:]]*context:/d; /^[[:space:]]*dockerfile:/d' "$STAGING/docker-compose.yml"
+
+          # Env template
           cat > "$STAGING/.env.example" << 'ENVEOF'
           # The Attic AI — Environment Configuration
           TZ=UTC
@@ -109,7 +101,7 @@ jobs:
           ==========================================
 
           REQUIREMENTS:
-            - macOS (Apple Silicon)
+            - macOS (Apple Silicon) with internet connection for first install
             - Docker Desktop (https://docker.com/products/docker-desktop)
 
           INSTALL:
@@ -117,23 +109,19 @@ jobs:
             2. Start Docker Desktop and wait for it to be ready
             3. Double-click install.command
 
+            The installer pulls Docker images (~3GB) and AI models (~1-5GB).
+            First install takes 10-20 minutes depending on internet speed.
+
             Open http://localhost:3333 when complete.
 
           UNINSTALL:
             Double-click uninstall.command
           README
 
-      - name: Create zip archive
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          BUNDLE_NAME="attic-ai-v${VERSION}-arm64.zip"
-
-          mv staging "attic-ai-v${VERSION}-arm64"
-          zip -qr "$BUNDLE_NAME" "attic-ai-v${VERSION}-arm64/"
-
+          zip -qr "attic-ai-v${VERSION}-arm64.zip" "$STAGING/"
           mkdir -p dist
-          mv "$BUNDLE_NAME" dist/
-          echo "Bundle size: $(du -sh "dist/$BUNDLE_NAME" | cut -f1)"
+          mv "attic-ai-v${VERSION}-arm64.zip" dist/
+          echo "Bundle size: $(du -sh "dist/attic-ai-v${VERSION}-arm64.zip" | cut -f1)"
 
       - name: Generate checksums
         working-directory: dist
@@ -158,9 +146,10 @@ jobs:
             3. Unzip and double-click `install.command`
             4. Open http://localhost:3333
 
-            **Requirements:** macOS (Apple Silicon), Docker Desktop
+            **Requirements:** macOS (Apple Silicon), internet connection for first install, Docker Desktop
 
-            > **Note:** AI models (~1-5GB) are downloaded automatically on first run.
+            > **Note:** The installer pulls Docker images (~3GB) and AI models (~1-5GB) on first run.
+            > Install takes 10-20 minutes depending on internet speed.
             > Optional services (FalkorDB, Python sidecar, TAK Server) can be enabled from Admin > Services.
 
             ## Verify download

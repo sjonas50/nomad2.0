@@ -69,7 +69,9 @@ if [ -f images/attic-images.tar.gz ]; then
   gunzip -c images/attic-images.tar.gz | docker load
   ok "Docker images loaded"
 else
-  fail "images/attic-images.tar.gz not found. The bundle may be incomplete."
+  info "No bundled images found — pulling from registry (requires internet)..."
+  docker compose -f docker-compose.yml pull
+  ok "Docker images pulled"
 fi
 
 # ---------------------------------------------------------------------------
