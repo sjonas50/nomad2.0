@@ -10,39 +10,147 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14  # Apple Silicon runner (M1)
+    runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
+      - name: Set up QEMU (for arm64 cross-build)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
-      - name: Install Docker (Colima)
-        run: |
-          brew install docker colima
-          colima start --cpu 4 --memory 8 --arch aarch64
-          # Wait for Docker to be ready
-          for i in $(seq 1 30); do
-            docker info &>/dev/null && break
-            sleep 2
-          done
-          docker info
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build bundle (without models)
+      - name: Build attic-admin image (arm64)
         run: |
-          chmod +x scripts/bundle.sh
-          ./scripts/bundle.sh --no-models --version "${{ steps.version.outputs.VERSION }}"
+          docker buildx build --platform linux/arm64 \
+            -t attic-admin:latest \
+            --output type=docker \
+            .
+
+      - name: Build attic-sidecar image (arm64)
+        if: hashFiles('sidecar/Dockerfile') != ''
+        run: |
+          docker buildx build --platform linux/arm64 \
+            -t attic-sidecar:latest \
+            --output type=docker \
+            ./sidecar
+
+      - name: Pull dependency images (arm64)
+        run: |
+          IMAGES=(
+            "mysql:8.0"
+            "redis:7-alpine"
+            "ollama/ollama:latest"
+            "qdrant/qdrant:v1.12.1"
+            "falkordb/falkordb-server:latest"
+            "ghcr.io/brian7704/opentakserver:latest"
+          )
+          for img in "${IMAGES[@]}"; do
+            echo "Pulling $img for arm64..."
+            docker pull --platform linux/arm64 "$img"
+          done
+
+      - name: Save all images to tarball
+        run: |
+          mkdir -p staging/images
+
+          SAVE_IMAGES="attic-admin:latest mysql:8.0 redis:7-alpine ollama/ollama:latest qdrant/qdrant:v1.12.1 falkordb/falkordb-server:latest ghcr.io/brian7704/opentakserver:latest"
+          if [ -f sidecar/Dockerfile ]; then
+            SAVE_IMAGES="$SAVE_IMAGES attic-sidecar:latest"
+          fi
+
+          docker save $SAVE_IMAGES | gzip > staging/images/attic-images.tar.gz
+          echo "Image bundle size: $(du -sh staging/images/attic-images.tar.gz | cut -f1)"
+
+      - name: Assemble distribution package
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          STAGING="staging"
+
+          # Compose file
+          cp docker-compose.prod.yml "$STAGING/docker-compose.yml"
+
+          # Env template
+          cat > "$STAGING/.env.example" << 'ENVEOF'
+          # The Attic AI — Environment Configuration
+          TZ=UTC
+          PORT=3333
+          HOST=0.0.0.0
+          LOG_LEVEL=info
+          APP_KEY=__GENERATED_ON_INSTALL__
+          NODE_ENV=production
+          SESSION_DRIVER=cookie
+          DB_HOST=mysql
+          DB_PORT=3306
+          DB_USER=attic
+          DB_PASSWORD=attic_password
+          DB_DATABASE=attic
+          DB_ROOT_PASSWORD=attic_root
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          QUEUE_REDIS_HOST=redis
+          QUEUE_REDIS_PORT=6379
+          OLLAMA_HOST=http://ollama:11434
+          QDRANT_HOST=http://qdrant:6333
+          QDRANT_COLLECTION=attic_knowledge_base
+          FALKORDB_ENABLED=false
+          FALKORDB_HOST=falkordb
+          FALKORDB_PORT=6379
+          SIDECAR_URL=http://sidecar:8100
+          NODE_ID=attic-node-1
+          BUNDLE_DIR=/app/storage/bundles
+          ENVEOF
+
+          # Install/uninstall scripts
+          cp install.command "$STAGING/install.command"
+          cp uninstall.command "$STAGING/uninstall.command"
+          chmod +x "$STAGING/install.command" "$STAGING/uninstall.command"
+
+          # README
+          cat > "$STAGING/README.txt" << 'README'
+          The Attic AI — Offline Knowledge Platform
+          ==========================================
+
+          REQUIREMENTS:
+            - macOS (Apple Silicon)
+            - Docker Desktop (https://docker.com/products/docker-desktop)
+
+          INSTALL:
+            1. Install Docker Desktop if you don't have it
+            2. Start Docker Desktop and wait for it to be ready
+            3. Double-click install.command
+
+            Open http://localhost:3333 when complete.
+
+          UNINSTALL:
+            Double-click uninstall.command
+          README
+
+      - name: Create zip archive
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          BUNDLE_NAME="attic-ai-v${VERSION}-arm64.zip"
+
+          # Rename staging dir for clean zip structure
+          mv staging "attic-ai-v${VERSION}-arm64"
+          zip -qr "$BUNDLE_NAME" "attic-ai-v${VERSION}-arm64/"
+
+          mkdir -p dist
+          mv "$BUNDLE_NAME" dist/
+          echo "Bundle size: $(du -sh "dist/$BUNDLE_NAME" | cut -f1)"
 
       - name: Generate checksums
         working-directory: dist
         run: |
-          shasum -a 256 *.zip > checksums-sha256.txt
+          sha256sum *.zip > checksums-sha256.txt
           cat checksums-sha256.txt
 
       - name: Create GitHub Release
@@ -69,5 +177,5 @@ jobs:
 
             ## Verify download
             ```bash
-            shasum -a 256 -c checksums-sha256.txt
+            sha256sum -c checksums-sha256.txt
             ```
